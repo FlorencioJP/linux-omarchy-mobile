@@ -253,9 +253,11 @@
 			      <0x11100000 0x800>,
 			      <0x110f0000 0x2800>;
 			reg-names = "phy", "pcs", "pma";
-			/* placeholders until cmu_hsi0 exists */
-			clocks = <&usb_ref_clk>, <&usb_ref_clk>, <&usb_ref_clk>,
-				 <&usb_ref_clk>, <&usb_ref_clk>;
+			clocks = <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_ACLK_PHYCTRL>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_I_USB20_PHY_REFCLK_26>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_UASC_HSI0_CTRL_ACLK>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_UASC_HSI0_CTRL_PCLK>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_I_USBDPPHY_SCL_APB_PCLK>;
 			clock-names = "phy", "ref", "ctrl_aclk", "ctrl_pclk",
 				      "scl_pclk";
 			samsung,pmu-syscon = <&pmu_system_controller>;
@@ -267,6 +269,10 @@
 			compatible = "snps,dwc3";
 			reg = <0x11210000 0x10000>;
 			interrupts = <GIC_SPI 379 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_I_USB31DRD_REF_CLK_40>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_BUS_CLK_EARLY>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_I_USB31DRD_SUSPEND_CLK_26>;
+			clock-names = "ref", "bus_early", "suspend";
 			phys = <&usbdrd31_phy 0>;
 			phy-names = "usb2-phy";
 			dr_mode = "peripheral";
