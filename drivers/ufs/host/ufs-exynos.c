@@ -2083,6 +2083,18 @@ static int gs101_ufs_post_link(struct exynos_ufs *ufs)
 	return 0;
 }
 
+static int gs201_ufs_pre_link(struct exynos_ufs *ufs)
+{
+	struct ufs_hba *hba = ufs->hba;
+
+	/* Program the PCS for the 38.4 MHz reference clock used on gs201 */
+	ufshcd_dme_set(hba, UIC_ARG_MIB(0x200), 0x40);
+	ufshcd_dme_set(hba, UIC_ARG_MIB(0x202), 0x02);
+	ufshcd_dme_set(hba, UIC_ARG_MIB(0x200), 0x0);
+
+	return gs101_ufs_pre_link(ufs);
+}
+
 static int gs101_ufs_pre_pwr_change(struct exynos_ufs *ufs,
 					 struct ufs_pa_layer_attr *pwr)
 {
@@ -2294,6 +2306,25 @@ static const struct exynos_ufs_drv_data gs101_ufs_drvs = {
 	.suspend		= gs101_ufs_suspend,
 };
 
+/*
+ * gs201 fixed the PRDT, request list clear and OCS issues of gs101: its UTRD
+ * offsets and lengths follow the UFSHCI specification.
+ */
+static const struct exynos_ufs_drv_data gs201_ufs_drvs = {
+	.uic_attr		= &gs101_uic_attr,
+	.quirks			= UFSHCI_QUIRK_SKIP_MANUAL_WB_FLUSH_CTRL |
+				  UFSHCD_QUIRK_SKIP_DEF_UNIPRO_TIMEOUT_SETTING,
+	.opts			= EXYNOS_UFS_OPT_SKIP_CONFIG_PHY_ATTR |
+				  EXYNOS_UFS_OPT_UFSPR_SECURE |
+				  EXYNOS_UFS_OPT_TIMER_TICK_SELECT,
+	.iocc_mask		= UFS_GS101_SHARABLE,
+	.drv_init		= gs101_ufs_drv_init,
+	.pre_link		= gs201_ufs_pre_link,
+	.post_link		= gs101_ufs_post_link,
+	.pre_pwr_change		= gs101_ufs_pre_pwr_change,
+	.suspend		= gs101_ufs_suspend,
+};
+
 static const struct exynos_ufs_drv_data exynosautov920_ufs_drvs = {
 	.uic_attr               = &exynos7_uic_attr,
 	.quirks                 = UFSHCD_QUIRK_SKIP_DEF_UNIPRO_TIMEOUT_SETTING,
@@ -2312,6 +2343,8 @@ static const struct exynos_ufs_drv_data exynosautov920_ufs_drvs = {
 static const struct of_device_id exynos_ufs_of_match[] = {
 	{ .compatible = "google,gs101-ufs",
 	  .data	      = &gs101_ufs_drvs },
+	{ .compatible = "google,gs201-ufs",
+	  .data	      = &gs201_ufs_drvs },
 	{ .compatible = "samsung,exynos7-ufs",
 	  .data	      = &exynos_ufs_drvs },
 	{ .compatible = "samsung,exynosautov9-ufs",
