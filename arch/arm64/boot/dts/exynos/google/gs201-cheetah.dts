@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Google Pixel 7 Pro (cheetah) - M1 bring-up board file.
+ */
+
+/dts-v1/;
+
+#include "gs201.dtsi"
+
+/ {
+	model = "Google Pixel 7 Pro";
+	compatible = "google,gs201-cheetah", "google,gs201";
+
+	/*
+	 * ABL base-DTB match: (product id 0x09855000 | major rev). B0 = 1.
+	 * Ship a second copy with 0x09855000 in the dtb section to be safe.
+	 */
+	soc_id = <0x09855001 0x0>;
+
+	chosen {
+		/* ABL requires bootargs to exist; it appends its own after these. */
+		bootargs = "console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused rdinit=/init";
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges;
+
+		framebuffer0: framebuffer@fac00000 {
+			compatible = "simple-framebuffer";
+			memory-region = <&cont_splash_mem>;
+			width = <1440>;
+			height = <3120>;
+			stride = <(1440 * 4)>;
+			format = "a8r8g8b8";
+		};
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges;
+
+		/* [I] verify against the ABL-injected node in /sys/firmware/fdt */
+		/*
+		 * Same region and layout as stock Android, so a log written by
+		 * this kernel can be read from /sys/fs/pstore after a warm
+		 * reboot into the stock slot.
+		 */
+		ramoops@fd3ff000 {
+			compatible = "ramoops";
+			reg = <0x0 0xfd3ff000 0x400000>;
+			console-size = <0x200000>;
+			pmsg-size = <0x200000>;
+		};
+
+		cont_splash_mem: splash@fac00000 {
+			reg = <0x0 0xfac00000 (1440 * 3120 * 4)>;
+			no-map;
+		};
+	};
+};
+
+&usbdrd31_phy {
+	status = "okay";
+};
+
+&usb_dwc3 {
+	status = "okay";
+};
