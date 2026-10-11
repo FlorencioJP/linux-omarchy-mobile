@@ -131,6 +131,32 @@
 		clock-output-names = "usb20-ref";
 	};
 
+	/*
+	 * Bring-up placeholder for the GPU clocks. The real rate is owned by
+	 * the APM firmware (ACPM DVFS domains G3D and G3DL2); this only gives
+	 * Panthor a clock and an OPP whose rate matches what the hardware is
+	 * running at, so devfreq never asks for a change.
+	 */
+	gpu_clk: clock-gpu {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <151000000>;
+		clock-output-names = "gpu";
+	};
+
+	/*
+	 * Single OPP at the boot level from the bootloader's ECT
+	 * (MINMAX_G3D and MINMAX_G3DL2: boot = resume = 151 MHz on every ASV
+	 * group). No opp-microvolt: the rail voltage is set by ACPM.
+	 */
+	gpu_opp_table: opp-table-gpu {
+		compatible = "operating-points-v2";
+
+		opp-151000000 {
+			opp-hz = /bits/ 64 <151000000>;
+		};
+	};
+
 	reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <1>;
@@ -435,6 +461,25 @@
 					     "samsung,exynos850-wakeup-eint",
 					     "samsung,exynos7-wakeup-eint";
 			};
+		};
+
+		/*
+		 * No power-domains: the bootloader leaves both G3D power domains
+		 * (pd_g3d, pd_embedded_g3d) on, and nothing in Linux turns them
+		 * off yet. Their on/off sequence needs EL3 calls that the generic
+		 * Exynos power domain driver does not make.
+		 */
+		gpu: gpu@28000000 {
+			compatible = "google,gs201-mali", "arm,mali-valhall-csf";
+			reg = <0x28000000 0x480000>;
+			interrupts = <GIC_SPI 329 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 330 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 328 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "job", "mmu", "gpu";
+			clocks = <&gpu_clk>;
+			clock-names = "core";
+			operating-points-v2 = <&gpu_opp_table>;
+			status = "disabled";
 		};
 	};
 };
