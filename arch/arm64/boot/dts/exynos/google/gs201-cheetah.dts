@@ -19,7 +19,7 @@
 
 	chosen {
 		/* ABL requires bootargs to exist; it appends its own after these. */
-		bootargs = "console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused rdinit=/init";
+		bootargs = "console=tty0 fbcon=font:TER16x32 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init";
 		#address-cells = <2>;
 		#size-cells = <1>;
 		ranges;
