@@ -2880,6 +2880,9 @@ static const struct of_device_id exynos5_usbdrd_phy_of_match[] = {
 		.compatible = "google,gs101-usb31drd-phy",
 		.data = &gs101_usbd31rd_phy
 	}, {
+		.compatible = "google,gs201-usb31drd-phy",
+		.data = &gs101_usbd31rd_phy
+	}, {
 		.compatible = "samsung,exynos2200-usb32drd-phy",
 		.data = &exynos2200_usb32drd_phy,
 	}, {
