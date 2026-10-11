@@ -76,6 +76,11 @@
 	};
 };
 
+&gpu {
+	/* No mali-supply: the G3D rails follow the PMU power domain and ACPM. */
+	status = "okay";
+};
+
 /* Touchscreen: Synaptics S3908 on USI0 SPI */
 &usi0 {
 	samsung,mode = <USI_MODE_SPI>;
