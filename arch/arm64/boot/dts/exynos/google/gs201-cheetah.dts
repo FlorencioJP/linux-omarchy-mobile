@@ -19,7 +19,7 @@
 
 	chosen {
 		/* ABL requires bootargs to exist; it appends its own after these. */
-		bootargs = "console=tty0 fbcon=font:TER16x32 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init";
+		bootargs = "console=tty0 fbcon=font:TER16x32 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init omandroid.ufs-probe";
 		#address-cells = <2>;
 		#size-cells = <1>;
 		ranges;
@@ -32,6 +32,18 @@
 			stride = <(1440 * 4)>;
 			format = "a8r8g8b8";
 		};
+	};
+
+	/*
+	 * UFS VCC. Google drives it from GPIO gpp0-1 (boot-on); there is no
+	 * gs201 GPIO driver yet, so describe it as always on, as the
+	 * bootloader leaves it.
+	 */
+	ufs_0_fixed_vcc_reg: regulator-ufs-vcc {
+		compatible = "regulator-fixed";
+		regulator-name = "ufs-vcc";
+		regulator-always-on;
+		regulator-boot-on;
 	};
 
 	reserved-memory {
@@ -64,5 +76,14 @@
 };
 
 &usb_dwc3 {
+	status = "okay";
+};
+
+&ufs_0 {
+	vcc-supply = <&ufs_0_fixed_vcc_reg>;
+	status = "okay";
+};
+
+&ufs_0_phy {
 	status = "okay";
 };
