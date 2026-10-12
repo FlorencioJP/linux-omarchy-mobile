@@ -43,6 +43,11 @@ properties:
   power-domains:
     maxItems: 1
 
+  port:
+    $ref: /schemas/graph.yaml#/properties/port
+    description:
+      Input from the DECON.
+
 required:
   - compatible
   - reg
@@ -62,6 +67,12 @@ examples:
         interrupts = <GIC_SPI 250 IRQ_TYPE_LEVEL_HIGH>;
         #address-cells = <1>;
         #size-cells = <0>;
+
+        port {
+            dsi0_in: endpoint {
+                remote-endpoint = <&decon0_out>;
+            };
+        };
 
         panel@0 {
             compatible = "samsung,s6e3hc4";
