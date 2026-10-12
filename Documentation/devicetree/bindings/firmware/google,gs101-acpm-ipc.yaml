@@ -22,7 +22,9 @@ description: |
 
 properties:
   compatible:
-    const: google,gs101-acpm-ipc
+    enum:
+      - google,gs101-acpm-ipc
+      - google,gs201-acpm-ipc
 
   "#clock-cells":
     const: 1
@@ -76,6 +78,17 @@ required:
   - "#clock-cells"
   - mboxes
   - shmem
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          const: google,gs201-acpm-ipc
+    then:
+      properties:
+        pmic: false
+        pmic-1: false
+        pmic-2: false
 
 additionalProperties: false
 
