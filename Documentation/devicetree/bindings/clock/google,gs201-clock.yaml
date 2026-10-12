@@ -17,7 +17,10 @@ description: |
   clock in the dts.
 
   CMU_TOP is the top-level CMU: it prepares the base clocks with PLLs and
-  dividers. The other CMUs take their bus and IP clocks from CMU_TOP.
+  dividers. The other CMUs take their bus and IP clocks from CMU_TOP, except
+  CMU_APM, which is in the always-on (ALIVE) domain and runs from its own
+  PLL_ALV and OSCCLK. CMU_APM is shared with the APM (ACPM) firmware, so the
+  OS only describes the clocks of the peripherals it uses there.
 
   Each clock is assigned an identifier and client nodes use this identifier
   to name the clock they consume. The identifiers are defined as preprocessor
@@ -27,6 +30,7 @@ properties:
   compatible:
     enum:
       - google,gs201-cmu-top
+      - google,gs201-cmu-apm
       - google,gs201-cmu-disp
       - google,gs201-cmu-dpu
       - google,gs201-cmu-hsi0
@@ -69,7 +73,9 @@ allOf:
       properties:
         compatible:
           contains:
-            const: google,gs201-cmu-top
+            enum:
+              - google,gs201-cmu-apm
+              - google,gs201-cmu-top
     then:
       properties:
         clocks:

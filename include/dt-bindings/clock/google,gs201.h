@@ -666,4 +666,18 @@
 #define CLK_GOUT_DPU_SYSMMU_DPUD2_CLK_S2			33
 #define CLK_GOUT_DPU_SYSREG_DPU_PCLK				34
 
+/* CMU_APM (read-only subset: the APM USI1 UART that carries Bluetooth) */
+#define CLK_APM_PLL_DIV2_APM					1
+#define CLK_APM_PLL_DIV4_APM					2
+#define CLK_APM_PLL_DIV8_APM					3
+#define CLK_APM_PLL_DIV16_APM					4
+#define CLK_APM_PAD_CLK_APM					5
+#define CLK_MOUT_APM_FUNC					6
+#define CLK_MOUT_APM_FUNCSRC					7
+#define CLK_GOUT_APM_FUNC					8
+#define CLK_DOUT_APM_USI1_UART					9
+#define CLK_GOUT_APM_APM_USI1_UART_IPCLK			10
+#define CLK_GOUT_APM_APM_USI1_UART_PCLK			11
+#define CLK_GOUT_APM_CLK_APM_USI1_UART_CLK			12
+
 #endif /* _DT_BINDINGS_CLOCK_GOOGLE_GS201_H */
