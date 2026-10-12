@@ -65,9 +65,10 @@ static const struct mfd_cell s2mpg12_devs[] = {
 	MFD_CELL_RES("s2mpg12-rtc", s2mpg12_rtc_resources),
 };
 
-/* Only the LDOs so far: no interrupt, no RTC, no GPIOs on this PMIC yet. */
+/* Only the LDOs and GPIOs so far: no interrupt, no RTC on this PMIC yet. */
 static const struct mfd_cell s2mpg13_devs[] = {
 	MFD_CELL_NAME("s2mpg13-regulator"),
+	MFD_CELL_OF("s2mpg13-gpio", NULL, NULL, 0, 0, "samsung,s2mpg13-gpio"),
 };
 
 static const struct resource s2mps11_rtc_resources[] = {

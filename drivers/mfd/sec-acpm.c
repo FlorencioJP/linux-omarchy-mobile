@@ -37,6 +37,7 @@ struct sec_pmic_acpm_platform_data {
 	const struct regmap_config *regmap_cfg_pmic;
 	const struct regmap_config *regmap_cfg_rtc;
 	const struct regmap_config *regmap_cfg_meter;
+	const struct regmap_config *regmap_cfg_gpio;
 
 	/* No interrupt line is wired up for this PMIC (yet). */
 	bool no_irq;
@@ -469,10 +470,11 @@ static const struct regmap_config s2mpg12_regmap_config_meter = {
 };
 
 /*
- * S2MPG13 (gs201 sub-PMIC): only its LDOs so far. The common block is read
- * only. In the PM block only the LDO control registers can be written, and
- * the interrupt status registers (clear on read) are never read, so nothing
- * here can touch a buck converter or lose an interrupt. No caching.
+ * S2MPG13 (gs201 sub-PMIC): only its LDOs and GPIOs so far. The common block
+ * is read only. In the PM block only the LDO control registers can be
+ * written, and in the GPIO block only the per-pin control registers. The
+ * interrupt status registers (clear on read) are never read, so nothing here
+ * can touch a buck converter or lose an interrupt. No caching.
  */
 static const struct regmap_range s2mpg13_common_registers[] = {
 	regmap_reg_range(S2MPG13_COMMON_VGPIO0, S2MPG13_COMMON_IBIM2),
@@ -524,6 +526,34 @@ static const struct regmap_config s2mpg13_regmap_config_pmic = {
 	.cache_type = REGCACHE_NONE,
 };
 
+static const struct regmap_range s2mpg13_gpio_rd_registers[] = {
+	regmap_reg_range(S2MPG13_GPIO_INT1M, S2MPG13_GPIO_7_MONSEL),
+};
+
+static const struct regmap_range s2mpg13_gpio_wr_registers[] = {
+	regmap_reg_range(S2MPG13_GPIO_0_SET, S2MPG13_GPIO_7_SET),
+};
+
+static const struct regmap_access_table s2mpg13_gpio_rd_table = {
+	.yes_ranges = s2mpg13_gpio_rd_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg13_gpio_rd_registers),
+};
+
+static const struct regmap_access_table s2mpg13_gpio_wr_table = {
+	.yes_ranges = s2mpg13_gpio_wr_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg13_gpio_wr_registers),
+};
+
+static const struct regmap_config s2mpg13_regmap_config_gpio = {
+	.name = "gpio",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG13_GPIO_7_MONSEL,
+	.wr_table = &s2mpg13_gpio_wr_table,
+	.rd_table = &s2mpg13_gpio_rd_table,
+	.cache_type = REGCACHE_NONE,
+};
+
 struct sec_pmic_acpm_shared_bus_context {
 	struct acpm_handle *acpm;
 	unsigned int acpm_chan_id;
@@ -536,6 +566,7 @@ enum sec_pmic_acpm_accesstype {
 	SEC_PMIC_ACPM_ACCESSTYPE_RTC = 0x02,
 	SEC_PMIC_ACPM_ACCESSTYPE_METER = 0x0a,
 	SEC_PMIC_ACPM_ACCESSTYPE_WLWP = 0x0b,
+	SEC_PMIC_ACPM_ACCESSTYPE_GPIO = 0x0c,
 	SEC_PMIC_ACPM_ACCESSTYPE_TRIM = 0x0f,
 };
 
@@ -690,6 +721,13 @@ static int sec_pmic_acpm_probe(struct platform_device *pdev)
 			return PTR_ERR(regmap);
 	}
 
+	if (pdata->regmap_cfg_gpio) {
+		regmap = sec_pmic_acpm_regmap_init(dev, shared_ctx, SEC_PMIC_ACPM_ACCESSTYPE_GPIO,
+						   pdata->regmap_cfg_gpio, true);
+		if (IS_ERR(regmap))
+			return PTR_ERR(regmap);
+	}
+
 	ret = sec_pmic_probe(dev, pdata->device_type, irq, regmap_pmic, NULL);
 	if (ret)
 		return ret;
@@ -740,6 +778,7 @@ static const struct sec_pmic_acpm_platform_data s2mpg13_data = {
 	.speedy_channel = 1,
 	.regmap_cfg_common = &s2mpg13_regmap_config_common,
 	.regmap_cfg_pmic = &s2mpg13_regmap_config_pmic,
+	.regmap_cfg_gpio = &s2mpg13_regmap_config_gpio,
 	.no_irq = true,
 };
 

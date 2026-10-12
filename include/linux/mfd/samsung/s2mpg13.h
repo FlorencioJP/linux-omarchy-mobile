@@ -3,7 +3,7 @@
  * Copyright 2015 Samsung Electronics
  *
  * Registers of the Samsung S2MPG13 PMIC, the sub-PMIC used with Google's
- * gs201 SoC. Only what the LDO regulators need so far.
+ * gs201 SoC. Only what the LDO regulators and the GPIOs need so far.
  */
 
 #ifndef __LINUX_MFD_S2MPG13_H
@@ -71,6 +71,35 @@ enum s2mpg13_pmic_reg {
 	S2MPG13_PMIC_LDO_CTRL1,
 	S2MPG13_PMIC_LDO_CTRL2,
 };
+
+/* GPIO registers (type 0x00c) */
+enum s2mpg13_gpio_reg {
+	S2MPG13_GPIO_INT1,
+	S2MPG13_GPIO_INT2,
+	S2MPG13_GPIO_INT1M,
+	S2MPG13_GPIO_INT2M,
+	S2MPG13_GPIO_STATUS,
+	S2MPG13_GPIO_0_SET,
+	S2MPG13_GPIO_1_SET,
+	S2MPG13_GPIO_2_SET,
+	S2MPG13_GPIO_3_SET,
+	S2MPG13_GPIO_4_SET,
+	S2MPG13_GPIO_5_SET,
+	S2MPG13_GPIO_6_SET,
+	S2MPG13_GPIO_7_SET,
+	S2MPG13_GPIO_0_MONSEL,
+	S2MPG13_GPIO_7_MONSEL = S2MPG13_GPIO_0_MONSEL + 7,
+};
+
+#define S2MPG13_GPIO_NUM		8
+
+/* S2MPG13_GPIO_n_SET */
+#define S2MPG13_GPIO_SET_MODE		GENMASK(1, 0)	/* remote control source */
+#define S2MPG13_GPIO_SET_DRV_STR	BIT(2)
+#define S2MPG13_GPIO_SET_PULL_DOWN	BIT(3)
+#define S2MPG13_GPIO_SET_PULL_UP	BIT(4)
+#define S2MPG13_GPIO_SET_OUT		BIT(5)
+#define S2MPG13_GPIO_SET_OUT_EN		BIT(6)
 
 /* LDO regulators */
 enum s2mpg13_regulators {
