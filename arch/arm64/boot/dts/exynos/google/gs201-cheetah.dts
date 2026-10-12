@@ -5,6 +5,7 @@
 
 /dts-v1/;
 
+#include <dt-bindings/input/input.h>
 #include <dt-bindings/soc/samsung,exynos-usi.h>
 #include "gs201.dtsi"
 
@@ -36,6 +37,37 @@
 			height = <3120>;
 			stride = <(1440 * 4)>;
 			format = "a8r8g8b8";
+		};
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-0 = <&key_voldown>, <&key_volup>, <&key_power>;
+		pinctrl-names = "default";
+
+		button-vol-down {
+			label = "KEY_VOLUMEDOWN";
+			linux,code = <KEY_VOLUMEDOWN>;
+			gpios = <&gpa10 1 GPIO_ACTIVE_LOW>;
+			wakeup-source;
+		};
+
+		button-vol-up {
+			label = "KEY_VOLUMEUP";
+			linux,code = <KEY_VOLUMEUP>;
+			gpios = <&gpa8 5 GPIO_ACTIVE_LOW>;
+			wakeup-source;
+		};
+
+		/*
+		 * PMIC_PWRON_OD_L: the S2MPG12 PWRONB line, also wired to the
+		 * SoC. The PMIC's own long-press reset is unaffected.
+		 */
+		button-power {
+			label = "KEY_POWER";
+			linux,code = <KEY_POWER>;
+			gpios = <&gpa10 0 GPIO_ACTIVE_LOW>;
+			wakeup-source;
 		};
 	};
 
