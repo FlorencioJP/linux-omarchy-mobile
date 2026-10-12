@@ -31,6 +31,19 @@ config LEDS_KTD2692
 
 	  Say Y to enable this driver.
 
+config LEDS_LM3644
+	tristate "LED support for the TI LM3644 flash LED driver (torch mode)"
+	depends on I2C && OF
+	depends on GPIOLIB || COMPILE_TEST
+	select REGMAP_I2C
+	help
+	  This option enables torch mode of the TI LM3644 and LM3644TT
+	  dual-channel flash LED drivers as an LED class device, as used
+	  for the rear flash LED of Google Pixel 7 phones.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called leds-lm3644.
+
 config LEDS_LM3601X
 	tristate "LED support for LM3601x Chips"
 	depends on LEDS_CLASS && I2C
