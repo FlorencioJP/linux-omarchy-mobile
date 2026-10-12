@@ -17,6 +17,7 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/reboot.h>
+#include <linux/suspend.h>
 #include <linux/regmap.h>
 
 #include <linux/soc/samsung/exynos-regs-pmu.h>
@@ -556,6 +557,15 @@ static int exynos_pmu_probe(struct platform_device *pdev)
 
 static int exynos_cpupm_suspend_noirq(struct device *dev)
 {
+	/*
+	 * In suspend-to-idle the CPUs keep entering their cpuidle states and
+	 * nothing else programs the PMU for them, so they still need the
+	 * per-CPU hint: without it the firmware refuses every power-down and
+	 * the idle loop spins on refused PSCI calls until wakeup.
+	 */
+	if (pm_suspend_target_state == PM_SUSPEND_TO_IDLE)
+		return 0;
+
 	raw_spin_lock(&pmu_context->cpupm_lock);
 	pmu_context->sys_insuspend = true;
 	raw_spin_unlock(&pmu_context->cpupm_lock);
