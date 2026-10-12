@@ -163,12 +163,24 @@
 		#size-cells = <1>;
 		ranges;
 
+		/*
+		 * Regions the stock firmware and Android keep out of the kernel's
+		 * hands. seclog is written by the secure world while Linux runs;
+		 * the modem and AoC regions are DMA targets once those cores run;
+		 * ect holds the bootloader's clock tables. Left as System RAM they
+		 * can be handed out and overwritten under us.
+		 */
+		ect@90000000 { reg = <0x0 0x90000000 0x3a000>; no-map; };
 		gsa@90200000 { reg = <0x0 0x90200000 0x400000>; no-map; };
 		tpu-ctx@91e00000 { reg = <0x0 0x91e00000 0x1200000>; no-map; };
 		tpu-fw@93000000 { reg = <0x0 0x93000000 0x1000000>; no-map; };
 		aoc@94000000 { reg = <0x0 0x94000000 0x3000000>; no-map; };
+		xhci-dma@97000000 { reg = <0x0 0x97000000 0x400000>; no-map; };
 		gxp@98000000 { reg = <0x0 0x98000000 0x500000>; no-map; };
+		seclog@c3000000 { reg = <0x0 0xc3000000 0x80000>; no-map; };
 		dss@d8100000 { reg = <0x0 0xd8100000 0x5f20000>; no-map; };
+		cp-rmem1@e8000000 { reg = <0x0 0xe8000000 0x2000000>; no-map; };
+		cp-rmem@ea400000 { reg = <0x0 0xea400000 0x800000>; no-map; };
 		abl@f8800000 { reg = <0x0 0xf8800000 0x2000000>; no-map; };
 		debug@fd3f0000 { reg = <0x0 0xfd3f0000 0x10000>; no-map; };
 		bldr-log@fd800000 { reg = <0x0 0xfd800000 0x100000>; no-map; };
