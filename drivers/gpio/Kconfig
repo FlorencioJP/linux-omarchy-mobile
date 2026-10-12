@@ -1650,6 +1650,17 @@ config GPIO_RC5T583
 	  This driver provides the support for driving/reading the GPIO pins
 	  of RC5T583 device through standard GPIO library.
 
+config GPIO_S2MPG13
+	tristate "Samsung S2MPG13 PMIC GPIO support"
+	depends on MFD_SEC_ACPM
+	help
+	  Support for the eight GPIOs of the Samsung S2MPG13 sub-PMIC paired
+	  with Google's gs201 SoC, reached through the ACPM firmware. On the
+	  Pixel 7 boards they switch the camera supplies.
+
+	  This driver can also be built as a module. If so, the module will
+	  be called gpio-s2mpg13.
+
 config GPIO_SL28CPLD
 	tristate "Kontron sl28cpld GPIO support"
 	depends on MFD_SL28CPLD || COMPILE_TEST
