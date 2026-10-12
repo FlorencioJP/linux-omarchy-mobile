@@ -8,7 +8,7 @@
  * cmucal-node.c, Copyright (c) 2021 Samsung Electronics Co., Ltd.).
  *
  * Only the CMUs needed for early bring-up are described: TOP, MISC, HSI0,
- * HSI2, PERIC0 and PERIC1.
+ * HSI2, PERIC0, PERIC1, DISP and DPU, plus a read-only subset of APM.
  */
 
 #include <linux/clk-provider.h>
@@ -23,6 +23,7 @@
 
 /* NOTE: Must be equal to the last clock ID increased by one */
 #define CLKS_NR_TOP	(CLK_GOUT_CMU_TPU_UART + 1)
+#define CLKS_NR_APM	(CLK_GOUT_APM_CLK_APM_USI1_UART_CLK + 1)
 #define CLKS_NR_MISC	(CLK_GOUT_MISC_XIU_D_MISC_ACLK + 1)
 #define CLKS_NR_HSI0	(CLK_GOUT_HSI0_XIU_P_HSI0_ACLK + 1)
 #define CLKS_NR_HSI2	(CLK_GOUT_HSI2_XIU_P_HSI2_ACLK + 1)
@@ -2213,6 +2214,85 @@ static void __init gs201_cmu_misc_init(struct device_node *np)
 /* Register CMU_MISC early, as MCT depends on it */
 CLK_OF_DECLARE(gs201_cmu_misc, "google,gs201-cmu-misc",
 	       gs201_cmu_misc_init);
+
+/* ---- CMU_APM ----------------------------------------------------- */
+
+/*
+ * Register Offset definitions for CMU_APM (0x18000000)
+ *
+ * CMU_APM is shared with the APM (ACPM) firmware, which runs the PMIC
+ * interface, the mailboxes and its own buses from it. Only the clock path
+ * of the APM USI1 UART (Bluetooth on Pixel 7 devices) is described, and the
+ * OS never writes this CMU: the muxes and the divider are read-only, there
+ * is no clk_regs list (so no init-time or suspend/resume writes), no
+ * controller option offset, and the gates run in automatic mode, where
+ * enable and disable are no-ops. The rates are what the firmware set up.
+ */
+#define CLK_CON_MUX_MUX_CLKCMU_APM_FUNC						0x1000
+#define CLK_CON_MUX_MUX_CLKCMU_APM_FUNCSRC					0x1004
+#define CLK_CON_DIV_DIV_CLK_APM_USI1_UART					0x1814
+#define CLK_CON_GAT_GATE_CLKCMU_APM_FUNC					0x2084
+#define CLK_CON_GAT_GOUT_BLK_APM_UID_APM_USI1_UART_IPCLKPORT_IPCLK		0x20ac
+#define CLK_CON_GAT_GOUT_BLK_APM_UID_APM_USI1_UART_IPCLKPORT_PCLK		0x20b0
+#define CLK_CON_GAT_GOUT_BLK_APM_UID_RSTNSYNC_CLK_APM_USI1_UART_IPCLKPORT_CLK	0x2100
+
+PNAME(mout_apm_func_p)		= { "oscclk", "mout_apm_funcsrc",
+				    "pad_clk_apm", "oscclk" };
+PNAME(mout_apm_funcsrc_p)	= { "pll_alv_div2_apm", "pll_alv_div4_apm",
+				    "pll_alv_div16_apm", "pll_alv_div8_apm" };
+
+static const struct samsung_fixed_rate_clock apm_fixed_clks[] __initconst = {
+	FRATE(CLK_APM_PLL_DIV2_APM, "pll_alv_div2_apm", NULL, 0, 394000000),
+	FRATE(CLK_APM_PLL_DIV4_APM, "pll_alv_div4_apm", NULL, 0, 197000000),
+	FRATE(CLK_APM_PLL_DIV8_APM, "pll_alv_div8_apm", NULL, 0, 99000000),
+	FRATE(CLK_APM_PLL_DIV16_APM, "pll_alv_div16_apm", NULL, 0, 50000000),
+	FRATE(CLK_APM_PAD_CLK_APM, "pad_clk_apm", NULL, 0, 100000000),
+};
+
+static const struct samsung_mux_clock apm_mux_clks[] __initconst = {
+	MUX_F(CLK_MOUT_APM_FUNC, "mout_apm_func", mout_apm_func_p,
+	      CLK_CON_MUX_MUX_CLKCMU_APM_FUNC, 0, 2, 0, CLK_MUX_READ_ONLY),
+	MUX_F(CLK_MOUT_APM_FUNCSRC, "mout_apm_funcsrc", mout_apm_funcsrc_p,
+	      CLK_CON_MUX_MUX_CLKCMU_APM_FUNCSRC, 0, 2, 0, CLK_MUX_READ_ONLY),
+};
+
+static const struct samsung_div_clock apm_div_clks[] __initconst = {
+	DIV_F(CLK_DOUT_APM_USI1_UART, "dout_apm_usi1_uart", "gout_apm_func",
+	      CLK_CON_DIV_DIV_CLK_APM_USI1_UART, 0, 7, 0,
+	      CLK_DIVIDER_READ_ONLY),
+};
+
+static const struct samsung_gate_clock apm_gate_clks[] __initconst = {
+	/* The APM's own bus clock: never gate it, whatever the gate mode */
+	GATE(CLK_GOUT_APM_FUNC, "gout_apm_func", "mout_apm_func",
+	     CLK_CON_GAT_GATE_CLKCMU_APM_FUNC, 21, CLK_IS_CRITICAL, 0),
+	GATE(CLK_GOUT_APM_APM_USI1_UART_IPCLK, "gout_apm_apm_usi1_uart_ipclk",
+	     "dout_apm_usi1_uart",
+	     CLK_CON_GAT_GOUT_BLK_APM_UID_APM_USI1_UART_IPCLKPORT_IPCLK,
+	     21, 0, 0),
+	GATE(CLK_GOUT_APM_APM_USI1_UART_PCLK, "gout_apm_apm_usi1_uart_pclk",
+	     "gout_apm_func",
+	     CLK_CON_GAT_GOUT_BLK_APM_UID_APM_USI1_UART_IPCLKPORT_PCLK,
+	     21, 0, 0),
+	GATE(CLK_GOUT_APM_CLK_APM_USI1_UART_CLK,
+	     "gout_apm_clk_apm_usi1_uart_clk", "dout_apm_usi1_uart",
+	     CLK_CON_GAT_GOUT_BLK_APM_UID_RSTNSYNC_CLK_APM_USI1_UART_IPCLKPORT_CLK,
+	     21, 0, 0),
+};
+
+static const struct samsung_cmu_info apm_cmu_info __initconst = {
+	.mux_clks		= apm_mux_clks,
+	.nr_mux_clks		= ARRAY_SIZE(apm_mux_clks),
+	.div_clks		= apm_div_clks,
+	.nr_div_clks		= ARRAY_SIZE(apm_div_clks),
+	.gate_clks		= apm_gate_clks,
+	.nr_gate_clks		= ARRAY_SIZE(apm_gate_clks),
+	.fixed_clks		= apm_fixed_clks,
+	.nr_fixed_clks		= ARRAY_SIZE(apm_fixed_clks),
+	.nr_clk_ids		= CLKS_NR_APM,
+	.auto_clock_gate	= true,
+	.gate_dbg_offset	= GS201_GATE_DBG_OFFSET,
+};
 
 /* ---- CMU_DISP ---------------------------------------------------- */
 
@@ -4413,6 +4493,9 @@ static int __init gs201_cmu_probe(struct platform_device *pdev)
 
 static const struct of_device_id gs201_cmu_of_match[] = {
 	{
+		.compatible = "google,gs201-cmu-apm",
+		.data = &apm_cmu_info,
+	}, {
 		.compatible = "google,gs201-cmu-disp",
 		.data = &disp_cmu_info,
 	}, {
