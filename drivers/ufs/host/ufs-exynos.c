@@ -243,6 +243,21 @@ static int gs101_ufs_drv_init(struct exynos_ufs *ufs)
 	return exynos_ufs_shareability(ufs);
 }
 
+static int gs201_ufs_drv_init(struct exynos_ufs *ufs)
+{
+	/*
+	 * gs101_ufs_suspend() asserts the device reset, so the link can't
+	 * stay in Hibern8 across system suspend: at the default level the
+	 * first Hibern8 exit on resume fails and the error handler has to
+	 * reset the host and the device. Power the device down and turn the
+	 * link off instead, which resumes through a full re-init, as the
+	 * downstream driver does.
+	 */
+	ufs->hba->spm_lvl = UFS_PM_LVL_5;
+
+	return gs101_ufs_drv_init(ufs);
+}
+
 static int exynosauto_ufs_drv_init(struct exynos_ufs *ufs)
 {
 	return exynos_ufs_shareability(ufs);
@@ -2325,7 +2340,7 @@ static const struct exynos_ufs_drv_data gs201_ufs_drvs = {
 				  EXYNOS_UFS_OPT_UFSPR_SECURE |
 				  EXYNOS_UFS_OPT_TIMER_TICK_SELECT,
 	.iocc_mask		= UFS_GS101_SHARABLE,
-	.drv_init		= gs101_ufs_drv_init,
+	.drv_init		= gs201_ufs_drv_init,
 	.pre_link		= gs201_ufs_pre_link,
 	.post_link		= gs101_ufs_post_link,
 	.pre_pwr_change		= gs101_ufs_pre_pwr_change,
