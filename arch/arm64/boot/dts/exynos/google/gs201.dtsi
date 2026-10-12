@@ -15,6 +15,7 @@
 	interrupt-parent = <&gic>;
 
 	aliases {
+		pinctrl0 = &pinctrl_gpio_alive;
 		pinctrl1 = &pinctrl_far_alive;
 		pinctrl5 = &pinctrl_peric1;
 	};
@@ -446,6 +447,21 @@
 		pmu_intr_gen: syscon@18070000 {
 			compatible = "google,gs201-pmu-intr-gen", "syscon";
 			reg = <0x18070000 0x10000>;
+		};
+
+		pinctrl_gpio_alive: pinctrl@180d0000 {
+			compatible = "google,gs201-pinctrl";
+			reg = <0x180d0000 0x1000>;
+			/* TODO: CMU_APM gate, once there is a driver for it */
+			clocks = <0>;
+			clock-names = "pclk";
+
+			wakeup-interrupt-controller {
+				compatible = "google,gs201-wakeup-eint",
+					     "google,gs101-wakeup-eint",
+					     "samsung,exynos850-wakeup-eint",
+					     "samsung,exynos7-wakeup-eint";
+			};
 		};
 
 		pinctrl_far_alive: pinctrl@180e0000 {
