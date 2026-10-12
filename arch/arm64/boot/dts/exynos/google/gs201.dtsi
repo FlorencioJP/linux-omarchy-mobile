@@ -4,6 +4,7 @@
  */
 
 #include <dt-bindings/clock/google,gs201.h>
+#include <dt-bindings/clock/google,gs201-acpm.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/interrupt-controller/irq.h>
@@ -130,6 +131,29 @@
 		#clock-cells = <0>;
 		clock-frequency = <19200000>;	/* Google: phy_ref_clock */
 		clock-output-names = "usb20-ref";
+	};
+
+	/*
+	 * Bring-up placeholder for the CMU_APM gate of the AP-APM mailbox
+	 * (GOUT_BLK_APM_UID_MAILBOX_APM_AP_IPCLKPORT_PCLK, CMU_APM + 0x20d4).
+	 * Google's ACPM driver never touches it: the gate runs under automatic
+	 * clock gating (Q-channel MAILBOX_APM_AP_QCH). Replace with cmu_apm once
+	 * there is a driver for it. The rate is not used.
+	 */
+	apm_mbox_pclk: clock-apm-mbox-pclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24576000>;
+		clock-output-names = "apm-mbox-pclk";
+	};
+
+	firmware {
+		acpm_ipc: power-management {
+			compatible = "google,gs201-acpm-ipc";
+			#clock-cells = <1>;
+			mboxes = <&ap2apm_mailbox>;
+			shmem = <&apm_sram>;
+		};
 	};
 
 	/*
@@ -541,6 +565,23 @@
 					     "samsung,exynos850-wakeup-eint",
 					     "samsung,exynos7-wakeup-eint";
 			};
+		};
+
+		ap2apm_mailbox: mailbox@18210000 {
+			compatible = "google,gs201-mbox", "google,gs101-mbox";
+			reg = <0x18210000 0x1000>;
+			clocks = <&apm_mbox_pclk>;
+			clock-names = "pclk";
+			interrupts = <GIC_SPI 78 IRQ_TYPE_LEVEL_HIGH>;
+			#mbox-cells = <0>;
+		};
+
+		apm_sram: sram@18500000 {
+			compatible = "mmio-sram";
+			reg = <0x18500000 0x48000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0x0 0x18500000 0x48000>;
 		};
 
 		/*
