@@ -613,6 +613,9 @@ struct regmap_irq_chip_data *sec_irq_init(struct sec_pmic_dev *sec_pmic)
 		return sec_irq_init_s2mpg1x(sec_pmic);
 	case S2MPG12:
 		return sec_irq_init_s2mpg12(sec_pmic);
+	case S2MPG13:
+		/* No interrupt line described for it yet: LDOs only. */
+		return NULL;
 	case S2MPS11X:
 		sec_irq_chip = &s2mps11_irq_chip;
 		break;

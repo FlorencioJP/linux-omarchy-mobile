@@ -65,6 +65,11 @@ static const struct mfd_cell s2mpg12_devs[] = {
 	MFD_CELL_RES("s2mpg12-rtc", s2mpg12_rtc_resources),
 };
 
+/* Only the LDOs so far: no interrupt, no RTC, no GPIOs on this PMIC yet. */
+static const struct mfd_cell s2mpg13_devs[] = {
+	MFD_CELL_NAME("s2mpg13-regulator"),
+};
+
 static const struct resource s2mps11_rtc_resources[] = {
 	DEFINE_RES_IRQ_NAMED(S2MPS11_IRQ_RTCA0, "alarm"),
 };
@@ -135,6 +140,7 @@ static void sec_pmic_dump_rev(struct sec_pmic_dev *sec_pmic)
 	case S2MPG10:
 	case S2MPG11:
 	case S2MPG12:
+	case S2MPG13:
 		/* For s2mpg1x, the revision is in a different regmap */
 		return;
 	case S2MU005:
@@ -261,6 +267,10 @@ int sec_pmic_probe(struct device *dev, int device_type, unsigned int irq,
 		sec_devs = s2mpg12_devs;
 		num_sec_devs = ARRAY_SIZE(s2mpg12_devs);
 		break;
+	case S2MPG13:
+		sec_devs = s2mpg13_devs;
+		num_sec_devs = ARRAY_SIZE(s2mpg13_devs);
+		break;
 	case S2MPS11X:
 		sec_devs = s2mps11_devs;
 		num_sec_devs = ARRAY_SIZE(s2mps11_devs);
@@ -338,6 +348,9 @@ static int sec_pmic_suspend(struct device *dev)
 {
 	struct sec_pmic_dev *sec_pmic = dev_get_drvdata(dev);
 
+	if (!sec_pmic->irq)
+		return 0;
+
 	if (device_may_wakeup(dev))
 		enable_irq_wake(sec_pmic->irq);
 	/*
@@ -357,6 +370,9 @@ static int sec_pmic_suspend(struct device *dev)
 static int sec_pmic_resume(struct device *dev)
 {
 	struct sec_pmic_dev *sec_pmic = dev_get_drvdata(dev);
+
+	if (!sec_pmic->irq)
+		return 0;
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(sec_pmic->irq);
