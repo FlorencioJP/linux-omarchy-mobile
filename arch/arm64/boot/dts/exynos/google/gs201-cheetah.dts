@@ -39,18 +39,12 @@
 			stride = <(1440 * 4)>;
 			format = "a8r8g8b8";
 			panel = <&panel>;
+			/*
+			 * Only the panel's size is read; simplefb must not wait for
+			 * the panel device (it appears with the DSI host driver).
+			 */
+			post-init-providers = <&panel>;
 		};
-	};
-
-	/*
-	 * The Samsung S6E3HC4 command-mode OLED. No driver yet: the bootloader
-	 * leaves it running for simplefb, which reads its physical size here.
-	 */
-	panel: panel {
-		compatible = "samsung,s6e3hc4";
-		width-mm = <71>;
-		height-mm = <155>;
-		status = "disabled";
 	};
 
 	gpio-keys {
@@ -118,6 +112,23 @@
 			reg = <0x0 0xfac00000 (1440 * 3120 * 4)>;
 			no-map;
 		};
+	};
+};
+
+&dsi0 {
+	/*
+	 * The bootloader leaves DECON0 -> DSIM0 -> panel running in command
+	 * mode; simplefb scans out its framebuffer and reads the panel size
+	 * here. Enabled only for display bring-up (DISPLAY-PLAN.md, gate D1).
+	 */
+	panel: panel@0 {
+		compatible = "samsung,s6e3hc4";
+		reg = <0>;
+		/* high = running; the bootloader leaves it high */
+		reset-gpios = <&gpa7 1 GPIO_ACTIVE_LOW>;
+		/* vddi (S2MPG13 BUCKA), vddd (S2MPG12 LDO28), vci (LDO27): no driver yet */
+		width-mm = <71>;
+		height-mm = <155>;
 	};
 };
 
