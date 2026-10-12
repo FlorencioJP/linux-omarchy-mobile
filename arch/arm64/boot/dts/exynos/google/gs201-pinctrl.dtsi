@@ -281,6 +281,13 @@
 		samsung,pin-drv = <GS101_PIN_DRV_2_5_MA>;
 	};
 
+	hsi2c13_bus: hsi2c13-bus-pins {
+		samsung,pins = "gpp25-0", "gpp25-1";
+		samsung,pin-function = <GS101_PIN_FUNC_2>;
+		samsung,pin-pud = <GS101_PIN_PULL_NONE>;
+		samsung,pin-drv = <GS101_PIN_DRV_2_5_MA>;
+	};
+
 	ts_reset: ts-reset-pins {
 		samsung,pins = "gpp23-2";
 		samsung,pin-function = <GS101_PIN_FUNC_OUTPUT>;
