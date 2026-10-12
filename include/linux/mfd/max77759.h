@@ -205,6 +205,7 @@ enum max77759_chgr_chg_dtls_states {
 
 enum max77759_chgr_mode {
 	MAX77759_CHGR_MODE_OFF = 0x0,
+	MAX77759_CHGR_MODE_BUCK_ON = 0x4,
 	MAX77759_CHGR_MODE_CHG_BUCK_ON = 0x5,
 	MAX77759_CHGR_MODE_OTG_BOOST_ON = 0xA,
 };
