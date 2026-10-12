@@ -157,28 +157,61 @@
 	};
 
 	/*
-	 * Bring-up placeholder for the GPU clocks. The real rate is owned by
-	 * the APM firmware (ACPM DVFS domains G3D and G3DL2); this only gives
-	 * Panthor a clock and an OPP whose rate matches what the hardware is
-	 * running at, so devfreq never asks for a change.
-	 */
-	gpu_clk: clock-gpu {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <151000000>;
-		clock-output-names = "gpu";
-	};
-
-	/*
-	 * Single OPP at the boot level from the bootloader's ECT
-	 * (MINMAX_G3D and MINMAX_G3DL2: boot = resume = 151 MHz on every ASV
-	 * group). No opp-microvolt: the rail voltage is set by ACPM.
+	 * GPU operating points, as shader (G3D) rates: the ACPM "gpu" clock
+	 * moves the top/L2 domain (G3DL2) to the level paired with each one.
+	 * 202-848 MHz are Google's gs201 GPU table (gpu_dvfs_table_v1);
+	 * 151 MHz is the ECT boot and resume level of both domains. No
+	 * opp-microvolt: ACPM sets the rail voltages from the fused ASV tables.
 	 */
 	gpu_opp_table: opp-table-gpu {
 		compatible = "operating-points-v2";
 
 		opp-151000000 {
 			opp-hz = /bits/ 64 <151000000>;
+		};
+
+		opp-202000000 {
+			opp-hz = /bits/ 64 <202000000>;
+		};
+
+		opp-251000000 {
+			opp-hz = /bits/ 64 <251000000>;
+		};
+
+		opp-302000000 {
+			opp-hz = /bits/ 64 <302000000>;
+		};
+
+		opp-351000000 {
+			opp-hz = /bits/ 64 <351000000>;
+		};
+
+		opp-400000000 {
+			opp-hz = /bits/ 64 <400000000>;
+		};
+
+		opp-471000000 {
+			opp-hz = /bits/ 64 <471000000>;
+		};
+
+		opp-510000000 {
+			opp-hz = /bits/ 64 <510000000>;
+		};
+
+		opp-572000000 {
+			opp-hz = /bits/ 64 <572000000>;
+		};
+
+		opp-701000000 {
+			opp-hz = /bits/ 64 <701000000>;
+		};
+
+		opp-762000000 {
+			opp-hz = /bits/ 64 <762000000>;
+		};
+
+		opp-848000000 {
+			opp-hz = /bits/ 64 <848000000>;
 		};
 	};
 
@@ -609,7 +642,7 @@
 				     <GIC_SPI 330 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 328 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "job", "mmu", "gpu";
-			clocks = <&gpu_clk>;
+			clocks = <&acpm_ipc GS201_CLK_ACPM_GPU>;
 			clock-names = "core";
 			operating-points-v2 = <&gpu_opp_table>;
 			status = "disabled";
