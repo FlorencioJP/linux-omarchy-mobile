@@ -418,6 +418,75 @@ int gs_dsim_set_refresh_rate(struct gs_dsim *dsim, unsigned int hz)
 }
 EXPORT_SYMBOL_GPL(gs_dsim_set_refresh_rate);
 
+/**
+ * gs_dsim_panel_sleep - switch the panel off and put it to sleep
+ * @dsim: the DSIM
+ *
+ * Display off, sleep in and reset (drm_panel_disable() and
+ * drm_panel_unprepare()). The panel loses its registers; only
+ * gs_dsim_panel_wake() brings it back. The caller has stopped DECON from
+ * sending frames, and has the link at the panel's cold-start rate.
+ *
+ * Return: 0, or a negative error code with the panel left on.
+ */
+int gs_dsim_panel_sleep(struct gs_dsim *dsim)
+{
+	guard(mutex)(&dsim->panel_lock);
+	if (!dsim->panel)
+		return -ENODEV;
+	if (!READ_ONCE(allow_tx))
+		return -EPERM;
+
+	drm_panel_disable(dsim->panel);
+	drm_panel_unprepare(dsim->panel);
+	if (dsim->panel->prepared) {
+		dev_err(dsim->dev, "panel did not go to sleep\n");
+		return -EIO;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(gs_dsim_panel_sleep);
+
+/**
+ * gs_dsim_panel_wake - reset and initialise the panel after a sleep
+ * @dsim: the DSIM
+ * @enable: false for the cold init only (drm_panel_prepare()), true for
+ *	display on and the backlight (drm_panel_enable())
+ *
+ * The cold init leaves the panel at 60 Hz, so the link timers go back to
+ * 60 Hz as well. The caller sends a frame between the two steps, so that
+ * display on shows it rather than whatever the panel's memory held.
+ *
+ * Return: 0, or a negative error code.
+ */
+int gs_dsim_panel_wake(struct gs_dsim *dsim, bool enable)
+{
+	const struct gs_dsim_rate *cold = gs_dsim_find_rate(60);
+
+	guard(mutex)(&dsim->panel_lock);
+	if (!dsim->panel)
+		return -ENODEV;
+
+	if (enable) {
+		drm_panel_enable(dsim->panel);
+		return dsim->panel->enabled ? 0 : -EIO;
+	}
+
+	if (!READ_ONCE(allow_tx))
+		return -EPERM;
+	if (dsim->rate && dsim->rate != cold)
+		gs_dsim_write_timers(dsim, cold);
+	drm_panel_prepare(dsim->panel);
+	if (!dsim->panel->prepared) {
+		dev_err(dsim->dev, "panel cold init failed\n");
+		return -EIO;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(gs_dsim_panel_wake);
+
 static const struct mipi_dsi_host_ops gs_dsim_host_ops = {
 	.attach = gs_dsim_attach,
 	.detach = gs_dsim_detach,
