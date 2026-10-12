@@ -1,0 +1,415 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * Dialog SLG51002 camera power management IC
+ *
+ * Eight LDOs (five high voltage, three low voltage) and four load switches,
+ * on I2C with 16-bit register addresses. A chip select input wakes it from
+ * a low power reset; the datasheet time from chip select high to ready is
+ * about 10 ms. Google's Pixel 7 boards use it for the camera modules.
+ *
+ * Register layout from Google's GPL slg51002 driver; structure follows the
+ * slg51000 driver. Each LDO's selectable range is read from its MINV/MAXV
+ * registers, as on the SLG51000.
+ *
+ * Google's driver also writes current limit trims through the chip's
+ * software test mode on OTP revision AA parts, and needs test mode to switch
+ * the load switches on them. This driver never enters test mode: on a
+ * revision AA part it registers the LDOs only and says so.
+ */
+
+#include <linux/bits.h>
+#include <linux/delay.h>
+#include <linux/err.h>
+#include <linux/gpio/consumer.h>
+#include <linux/i2c.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/regmap.h>
+#include <linux/regulator/driver.h>
+#include <linux/regulator/of_regulator.h>
+
+#define SLG51002_SYSCTL_PATN_ID_B0	0x1105
+#define SLG51002_SYSCTL_PATN_ID_B2	0x1107
+#define SLG51002_SYSCTL_MATRIX_CONF_A	0x110d
+#define SLG51002_SYSCTL_FAULT_LOG1	0x1115
+#define SLG51002_SYSCTL_STATUS		0x1117
+
+/* Load switch controls, in the input mux array */
+#define SLG51002_SW1_CTRL		0x1710
+#define SLG51002_SW4_CTRL		0x1713
+#define SLG51002_SW_EN			BIT(0)
+
+/* Per-LDO register block */
+#define SLG51002_LDO_VSEL(base)		(base)
+#define SLG51002_LDO_MINV(base)		((base) + 0x60)
+#define SLG51002_LDO_MAXV(base)		((base) + 0x61)
+#define SLG51002_LDO_STATUS(base)	((base) + 0xc1)
+#define SLG51002_LDO_STA_ILIM		BIT(0)
+#define SLG51002_LDO_STA_VOUT_OK	BIT(1)
+
+#define SLG51002_FLT_POR		BIT(5)
+#define SLG51002_FLT_RST		BIT(4)
+#define SLG51002_FLT_SEQ_CRASH		BIT(2)
+#define SLG51002_FLT_OVER_TEMP		BIT(1)
+
+#define SLG51002_ID_REV_AA		0xafda01
+#define SLG51002_ID_REV_AB		0xb13103
+
+/* Chip select high to ready */
+#define SLG51002_CS_READY_US		10000
+
+enum slg51002_regulators {
+	SLG51002_LDO1,
+	SLG51002_LDO2,
+	SLG51002_LDO3,
+	SLG51002_LDO4,
+	SLG51002_LDO5,
+	SLG51002_LDO6,
+	SLG51002_LDO7,
+	SLG51002_LDO8,
+	SLG51002_NUM_LDOS,
+	SLG51002_SW1 = SLG51002_NUM_LDOS,
+	SLG51002_SW2,
+	SLG51002_SW3,
+	SLG51002_SW4,
+	SLG51002_NUM_REGULATORS,
+};
+
+static const unsigned int slg51002_ldo_base[SLG51002_NUM_LDOS] = {
+	0x2000, 0x2200, 0x2300, 0x2500, 0x2700, 0x2900, 0x3100, 0x3200,
+};
+
+struct slg51002 {
+	struct device *dev;
+	struct regmap *regmap;
+	struct gpio_desc *cs_gpiod;
+	struct regulator_desc desc[SLG51002_NUM_REGULATORS];
+	u32 chip_id;
+};
+
+static bool slg51002_is_ldo_reg(unsigned int reg, bool writable)
+{
+	int i;
+
+	for (i = 0; i < SLG51002_NUM_LDOS; i++) {
+		unsigned int base = slg51002_ldo_base[i];
+
+		if (reg == SLG51002_LDO_VSEL(base))
+			return true;
+		if (writable)
+			continue;
+		if (reg == SLG51002_LDO_MINV(base) ||
+		    reg == SLG51002_LDO_MAXV(base) ||
+		    reg == SLG51002_LDO_STATUS(base))
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * Only the enable matrix, the LDO voltage selectors and the load switch
+ * controls are writable: nothing reaches test mode, the OTP shadow or the
+ * power sequencer.
+ */
+static bool slg51002_writeable_reg(struct device *dev, unsigned int reg)
+{
+	if (reg == SLG51002_SYSCTL_MATRIX_CONF_A)
+		return true;
+	if (reg >= SLG51002_SW1_CTRL && reg <= SLG51002_SW4_CTRL)
+		return true;
+
+	return slg51002_is_ldo_reg(reg, true);
+}
+
+static bool slg51002_readable_reg(struct device *dev, unsigned int reg)
+{
+	if (reg >= SLG51002_SYSCTL_PATN_ID_B0 && reg <= SLG51002_SYSCTL_PATN_ID_B2)
+		return true;
+	if (reg == SLG51002_SYSCTL_MATRIX_CONF_A ||
+	    reg == SLG51002_SYSCTL_FAULT_LOG1 ||
+	    reg == SLG51002_SYSCTL_STATUS)
+		return true;
+	if (reg >= SLG51002_SW1_CTRL && reg <= SLG51002_SW4_CTRL)
+		return true;
+
+	return slg51002_is_ldo_reg(reg, false);
+}
+
+static const struct regmap_config slg51002_regmap_config = {
+	.reg_bits = 16,
+	.val_bits = 8,
+	.max_register = 0x32c1,	/* LDO8 status */
+	.writeable_reg = slg51002_writeable_reg,
+	.readable_reg = slg51002_readable_reg,
+	.cache_type = REGCACHE_NONE,
+};
+
+static int slg51002_get_status(struct regulator_dev *rdev)
+{
+	struct slg51002 *chip = rdev_get_drvdata(rdev);
+	int id = rdev_get_id(rdev);
+	unsigned int status;
+	int ret;
+
+	ret = regulator_is_enabled_regmap(rdev);
+	if (ret < 0)
+		return ret;
+	if (!ret)
+		return REGULATOR_STATUS_OFF;
+
+	ret = regmap_read(chip->regmap,
+			  SLG51002_LDO_STATUS(slg51002_ldo_base[id]), &status);
+	if (ret < 0)
+		return ret;
+
+	if (!(status & SLG51002_LDO_STA_ILIM) &&
+	    (status & SLG51002_LDO_STA_VOUT_OK))
+		return REGULATOR_STATUS_ON;
+
+	return REGULATOR_STATUS_ERROR;
+}
+
+static const struct regulator_ops slg51002_ldo_ops = {
+	.enable = regulator_enable_regmap,
+	.disable = regulator_disable_regmap,
+	.is_enabled = regulator_is_enabled_regmap,
+	.list_voltage = regulator_list_voltage_linear,
+	.map_voltage = regulator_map_voltage_linear,
+	.get_voltage_sel = regulator_get_voltage_sel_regmap,
+	.set_voltage_sel = regulator_set_voltage_sel_regmap,
+	.get_status = slg51002_get_status,
+};
+
+static const struct regulator_ops slg51002_switch_ops = {
+	.enable = regulator_enable_regmap,
+	.disable = regulator_disable_regmap,
+	.is_enabled = regulator_is_enabled_regmap,
+};
+
+static const struct {
+	const char *name;
+	const char *supply;
+	unsigned int min_uV;
+	unsigned int uV_step;
+} slg51002_ldo_info[SLG51002_NUM_LDOS] = {
+	{ "ldo1", "vin1-2", 1200000, 10000 },
+	{ "ldo2", "vin1-2", 1200000, 10000 },
+	{ "ldo3", "vin3", 1200000, 10000 },
+	{ "ldo4", "vin4", 1200000, 10000 },
+	{ "ldo5", "vin5", 1200000, 10000 },
+	{ "ldo6", "vin6", 400000, 5000 },
+	{ "ldo7", "vin7", 400000, 5000 },
+	{ "ldo8", "vin8", 400000, 5000 },
+};
+
+static const char * const slg51002_switch_names[] = {
+	"sw1", "sw2", "sw3", "sw4",
+};
+
+static int slg51002_register_ldo(struct slg51002 *chip, int id)
+{
+	struct regulator_desc *desc = &chip->desc[id];
+	unsigned int base = slg51002_ldo_base[id];
+	struct regulator_config config = { };
+	struct regulator_dev *rdev;
+	u8 range[2];
+	int ret;
+
+	/* The selectable range is trimmed per part. */
+	ret = regmap_bulk_read(chip->regmap, SLG51002_LDO_MINV(base), range,
+			       ARRAY_SIZE(range));
+	if (ret)
+		return dev_err_probe(chip->dev, ret, "%s: range read failed\n",
+				     slg51002_ldo_info[id].name);
+	if (range[1] < range[0])
+		return dev_err_probe(chip->dev, -EINVAL,
+				     "%s: bad range %u-%u\n",
+				     slg51002_ldo_info[id].name, range[0], range[1]);
+
+	desc->name = slg51002_ldo_info[id].name;
+	desc->of_match = of_match_ptr(slg51002_ldo_info[id].name);
+	desc->regulators_node = of_match_ptr("regulators");
+	desc->supply_name = slg51002_ldo_info[id].supply;
+	desc->id = id;
+	desc->type = REGULATOR_VOLTAGE;
+	desc->owner = THIS_MODULE;
+	desc->ops = &slg51002_ldo_ops;
+	desc->uV_step = slg51002_ldo_info[id].uV_step;
+	desc->linear_min_sel = range[0];
+	desc->n_voltages = range[1] + 1;
+	desc->min_uV = slg51002_ldo_info[id].min_uV + range[0] * desc->uV_step;
+	desc->vsel_reg = SLG51002_LDO_VSEL(base);
+	desc->vsel_mask = 0xff;
+	desc->enable_reg = SLG51002_SYSCTL_MATRIX_CONF_A;
+	desc->enable_mask = BIT(id);
+
+	config.dev = chip->dev;
+	config.regmap = chip->regmap;
+	config.driver_data = chip;
+
+	rdev = devm_regulator_register(chip->dev, desc, &config);
+	if (IS_ERR(rdev))
+		return dev_err_probe(chip->dev, PTR_ERR(rdev),
+				     "%s: register failed\n", desc->name);
+
+	return 0;
+}
+
+static int slg51002_register_switch(struct slg51002 *chip, int id)
+{
+	struct regulator_desc *desc = &chip->desc[id];
+	struct regulator_config config = { };
+	struct regulator_dev *rdev;
+	int sw = id - SLG51002_SW1;
+
+	desc->name = slg51002_switch_names[sw];
+	desc->of_match = of_match_ptr(slg51002_switch_names[sw]);
+	desc->regulators_node = of_match_ptr("regulators");
+	desc->id = id;
+	desc->type = REGULATOR_VOLTAGE;
+	desc->owner = THIS_MODULE;
+	desc->ops = &slg51002_switch_ops;
+	desc->enable_reg = SLG51002_SW1_CTRL + sw;
+	desc->enable_mask = SLG51002_SW_EN;
+
+	config.dev = chip->dev;
+	config.regmap = chip->regmap;
+	config.driver_data = chip;
+
+	rdev = devm_regulator_register(chip->dev, desc, &config);
+	if (IS_ERR(rdev))
+		return dev_err_probe(chip->dev, PTR_ERR(rdev),
+				     "%s: register failed\n", desc->name);
+
+	return 0;
+}
+
+static int slg51002_read_id(struct slg51002 *chip)
+{
+	u8 id[3];
+	int ret;
+
+	ret = regmap_bulk_read(chip->regmap, SLG51002_SYSCTL_PATN_ID_B0, id,
+			       ARRAY_SIZE(id));
+	if (ret)
+		return ret;
+
+	chip->chip_id = id[2] << 16 | id[1] << 8 | id[0];
+
+	return 0;
+}
+
+static void slg51002_log_faults(struct slg51002 *chip)
+{
+	unsigned int val;
+
+	if (regmap_read(chip->regmap, SLG51002_SYSCTL_FAULT_LOG1, &val))
+		return;
+
+	dev_dbg(chip->dev, "fault log 0x%02x%s%s%s%s\n", val,
+		val & SLG51002_FLT_POR ? " POR" : "",
+		val & SLG51002_FLT_RST ? " RST" : "",
+		val & SLG51002_FLT_SEQ_CRASH ? " SEQ_CRASH" : "",
+		val & SLG51002_FLT_OVER_TEMP ? " OVER_TEMP" : "");
+}
+
+static void slg51002_sleep(void *data)
+{
+	struct slg51002 *chip = data;
+
+	/* Back to the low power reset state. */
+	gpiod_set_value_cansleep(chip->cs_gpiod, 0);
+}
+
+static int slg51002_i2c_probe(struct i2c_client *client)
+{
+	struct device *dev = &client->dev;
+	struct slg51002 *chip;
+	int id, ret;
+
+	chip = devm_kzalloc(dev, sizeof(*chip), GFP_KERNEL);
+	if (!chip)
+		return -ENOMEM;
+
+	chip->dev = dev;
+	i2c_set_clientdata(client, chip);
+
+	chip->cs_gpiod = devm_gpiod_get(dev, "dlg,cs", GPIOD_OUT_HIGH);
+	if (IS_ERR(chip->cs_gpiod))
+		return dev_err_probe(dev, PTR_ERR(chip->cs_gpiod),
+				     "no chip select\n");
+
+	ret = devm_add_action_or_reset(dev, slg51002_sleep, chip);
+	if (ret)
+		return ret;
+
+	fsleep(SLG51002_CS_READY_US);
+
+	chip->regmap = devm_regmap_init_i2c(client, &slg51002_regmap_config);
+	if (IS_ERR(chip->regmap))
+		return dev_err_probe(dev, PTR_ERR(chip->regmap),
+				     "regmap init failed\n");
+
+	ret = slg51002_read_id(chip);
+	if (ret)
+		return dev_err_probe(dev, ret, "chip ID read failed\n");
+
+	switch (chip->chip_id) {
+	case SLG51002_ID_REV_AB:
+		dev_info(dev, "pattern ID 0x%06x (revision AB)\n", chip->chip_id);
+		break;
+	case SLG51002_ID_REV_AA:
+		dev_warn(dev, "pattern ID 0x%06x (revision AA): current limit trims not applied, load switches not registered\n",
+			 chip->chip_id);
+		break;
+	default:
+		return dev_err_probe(dev, -ENODEV, "unknown pattern ID 0x%06x\n",
+				     chip->chip_id);
+	}
+
+	slg51002_log_faults(chip);
+
+	for (id = SLG51002_LDO1; id < SLG51002_NUM_LDOS; id++) {
+		ret = slg51002_register_ldo(chip, id);
+		if (ret)
+			return ret;
+	}
+
+	if (chip->chip_id == SLG51002_ID_REV_AA)
+		return 0;
+
+	for (id = SLG51002_SW1; id < SLG51002_NUM_REGULATORS; id++) {
+		ret = slg51002_register_switch(chip, id);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static const struct of_device_id slg51002_of_match[] = {
+	{ .compatible = "dlg,slg51002" },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, slg51002_of_match);
+
+static const struct i2c_device_id slg51002_i2c_id[] = {
+	{ .name = "slg51002" },
+	{ }
+};
+MODULE_DEVICE_TABLE(i2c, slg51002_i2c_id);
+
+static struct i2c_driver slg51002_regulator_driver = {
+	.driver = {
+		.name = "slg51002-regulator",
+		.of_match_table = slg51002_of_match,
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
+	},
+	.probe = slg51002_i2c_probe,
+	.id_table = slg51002_i2c_id,
+};
+module_i2c_driver(slg51002_regulator_driver);
+
+MODULE_DESCRIPTION("Dialog SLG51002 camera PMIC regulator driver");
+MODULE_LICENSE("GPL");
