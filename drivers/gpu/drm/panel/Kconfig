@@ -1031,6 +1031,21 @@ config DRM_PANEL_SAMSUNG_S6E3HA8
 	    Samsung AMB577PX01 (found in the Samsung S9 smartphone)
 
 
+config DRM_PANEL_SAMSUNG_S6E3HC4
+	tristate "Samsung S6E3HC4 DSI command mode panel"
+	depends on GPIOLIB
+	depends on OF
+	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
+	select DRM_DISPLAY_HELPER
+	select DRM_DISPLAY_DSC_HELPER
+	help
+	  Say Y or M here if you want to enable support for the Samsung
+	  S6E3HC4 DDIC and its 1440x3120 command-mode AMOLED panel, found
+	  in the Google Pixel 7 Pro. The driver can take over a panel the
+	  bootloader left running and exposes its brightness as a backlight
+	  device.
+
 config DRM_PANEL_SAMSUNG_S6E63J0X03
 	tristate "Samsung S6E63J0X03 DSI command mode panel"
 	depends on OF
