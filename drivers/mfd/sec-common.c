@@ -56,6 +56,15 @@ static const struct mfd_cell s2mpg11_devs[] = {
 	MFD_CELL_OF("s2mpg11-gpio", NULL, NULL, 0, 0, "samsung,s2mpg11-gpio"),
 };
 
+static const struct resource s2mpg12_rtc_resources[] = {
+	DEFINE_RES_IRQ_NAMED(S2MPG12_IRQ_RTCA0, "alarm"),
+};
+
+/* Only the RTC so far: the rails stay as the bootloader set them. */
+static const struct mfd_cell s2mpg12_devs[] = {
+	MFD_CELL_RES("s2mpg12-rtc", s2mpg12_rtc_resources),
+};
+
 static const struct resource s2mps11_rtc_resources[] = {
 	DEFINE_RES_IRQ_NAMED(S2MPS11_IRQ_RTCA0, "alarm"),
 };
@@ -125,6 +134,7 @@ static void sec_pmic_dump_rev(struct sec_pmic_dev *sec_pmic)
 	switch (sec_pmic->device_type) {
 	case S2MPG10:
 	case S2MPG11:
+	case S2MPG12:
 		/* For s2mpg1x, the revision is in a different regmap */
 		return;
 	case S2MU005:
@@ -246,6 +256,10 @@ int sec_pmic_probe(struct device *dev, int device_type, unsigned int irq,
 	case S2MPG11:
 		sec_devs = s2mpg11_devs;
 		num_sec_devs = ARRAY_SIZE(s2mpg11_devs);
+		break;
+	case S2MPG12:
+		sec_devs = s2mpg12_devs;
+		num_sec_devs = ARRAY_SIZE(s2mpg12_devs);
 		break;
 	case S2MPS11X:
 		sec_devs = s2mps11_devs;

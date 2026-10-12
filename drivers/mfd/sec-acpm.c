@@ -14,6 +14,7 @@
 #include <linux/mfd/samsung/rtc.h>
 #include <linux/mfd/samsung/s2mpg10.h>
 #include <linux/mfd/samsung/s2mpg11.h>
+#include <linux/mfd/samsung/s2mpg12.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -365,6 +366,104 @@ static const struct regmap_config s2mpg11_regmap_config_meter = {
 	.cache_type = REGCACHE_FLAT,
 };
 
+/*
+ * S2MPG12 (gs201 main PMIC): only what the RTC and the interrupt controller
+ * need. Writes are limited to the interrupt masks and the RTC, so that
+ * nothing here can change a rail. No caching: every access goes to the PMIC.
+ */
+static const struct regmap_range s2mpg12_common_registers[] = {
+	regmap_reg_range(0x00, 0x10), /* VGPIO, I3C, IBI, CHIPID, IBI masks */
+	regmap_reg_range(0x25, 0x25), /* TEST_MODE2 */
+};
+
+static const struct regmap_range s2mpg12_common_wr_registers[] = {
+	regmap_reg_range(S2MPG12_COMMON_IBIM1, S2MPG12_COMMON_IBIM2),
+};
+
+static const struct regmap_access_table s2mpg12_common_wr_table = {
+	.yes_ranges = s2mpg12_common_wr_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_common_wr_registers),
+};
+
+static const struct regmap_access_table s2mpg12_common_rd_table = {
+	.yes_ranges = s2mpg12_common_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_common_registers),
+};
+
+static const struct regmap_config s2mpg12_regmap_config_common = {
+	.name = "common",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG12_COMMON_TEST_MODE2,
+	.wr_table = &s2mpg12_common_wr_table,
+	.rd_table = &s2mpg12_common_rd_table,
+	.cache_type = REGCACHE_NONE,
+};
+
+static const struct regmap_range s2mpg12_pmic_wr_registers[] = {
+	regmap_reg_range(S2MPG12_PMIC_INT1M, S2MPG12_PMIC_INT5M),
+};
+
+static const struct regmap_range s2mpg12_pmic_precious_registers[] = {
+	regmap_reg_range(S2MPG12_PMIC_INT1, S2MPG12_PMIC_INT5), /* clear on read */
+};
+
+static const struct regmap_access_table s2mpg12_pmic_wr_table = {
+	.yes_ranges = s2mpg12_pmic_wr_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_pmic_wr_registers),
+};
+
+static const struct regmap_access_table s2mpg12_pmic_precious_table = {
+	.yes_ranges = s2mpg12_pmic_precious_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_pmic_precious_registers),
+};
+
+static const struct regmap_config s2mpg12_regmap_config_pmic = {
+	.name = "pmic",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG12_PMIC_SW_RESET,
+	.wr_table = &s2mpg12_pmic_wr_table,
+	.precious_table = &s2mpg12_pmic_precious_table,
+	.cache_type = REGCACHE_NONE,
+};
+
+static const struct regmap_config s2mpg12_regmap_config_rtc = {
+	.name = "rtc",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG12_RTC_LAST,
+	.cache_type = REGCACHE_NONE,
+};
+
+static const struct regmap_range s2mpg12_meter_registers[] = {
+	regmap_reg_range(S2MPG12_METER_INT1, S2MPG12_METER_INT2M),
+};
+
+static const struct regmap_range s2mpg12_meter_wr_registers[] = {
+	regmap_reg_range(S2MPG12_METER_INT1M, S2MPG12_METER_INT2M),
+};
+
+static const struct regmap_access_table s2mpg12_meter_wr_table = {
+	.yes_ranges = s2mpg12_meter_wr_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_meter_wr_registers),
+};
+
+static const struct regmap_access_table s2mpg12_meter_rd_table = {
+	.yes_ranges = s2mpg12_meter_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_meter_registers),
+};
+
+static const struct regmap_config s2mpg12_regmap_config_meter = {
+	.name = "meter",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG12_METER_INT2M,
+	.wr_table = &s2mpg12_meter_wr_table,
+	.rd_table = &s2mpg12_meter_rd_table,
+	.cache_type = REGCACHE_NONE,
+};
+
 struct sec_pmic_acpm_shared_bus_context {
 	struct acpm_handle *acpm;
 	unsigned int acpm_chan_id;
@@ -559,9 +658,20 @@ static const struct sec_pmic_acpm_platform_data s2mpg11_data = {
 	.regmap_cfg_meter = &s2mpg11_regmap_config_meter,
 };
 
+static const struct sec_pmic_acpm_platform_data s2mpg12_data = {
+	.device_type = S2MPG12,
+	.acpm_chan_id = 2,
+	.speedy_channel = 0,
+	.regmap_cfg_common = &s2mpg12_regmap_config_common,
+	.regmap_cfg_pmic = &s2mpg12_regmap_config_pmic,
+	.regmap_cfg_rtc = &s2mpg12_regmap_config_rtc,
+	.regmap_cfg_meter = &s2mpg12_regmap_config_meter,
+};
+
 static const struct of_device_id sec_pmic_acpm_of_match[] = {
 	{ .compatible = "samsung,s2mpg10-pmic", .data = &s2mpg10_data, },
 	{ .compatible = "samsung,s2mpg11-pmic", .data = &s2mpg11_data, },
+	{ .compatible = "samsung,s2mpg12-pmic", .data = &s2mpg12_data, },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, sec_pmic_acpm_of_match);

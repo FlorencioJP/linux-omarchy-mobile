@@ -6,12 +6,15 @@
 #include <linux/array_size.h>
 #include <linux/build_bug.h>
 #include <linux/dev_printk.h>
+#include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
+#include <linux/mfd/syscon.h>
 #include <linux/mfd/samsung/core.h>
 #include <linux/mfd/samsung/irq.h>
 #include <linux/mfd/samsung/s2mpg10.h>
 #include <linux/mfd/samsung/s2mpg11.h>
+#include <linux/mfd/samsung/s2mpg12.h>
 #include <linux/mfd/samsung/s2mps11.h>
 #include <linux/mfd/samsung/s2mps14.h>
 #include <linux/mfd/samsung/s2mpu02.h>
@@ -137,6 +140,46 @@ static const struct regmap_irq s2mpg11_pmic_irqs[] = {
 	REGMAP_IRQ_REG(S2MPG11_IRQ_NTC_WARN_CH5, 5, S2MPG11_IRQ_NTC_WARN_CH5_MASK),
 	REGMAP_IRQ_REG(S2MPG11_IRQ_NTC_WARN_CH6, 5, S2MPG11_IRQ_NTC_WARN_CH6_MASK),
 	REGMAP_IRQ_REG(S2MPG11_IRQ_NTC_WARN_CH7, 5, S2MPG11_IRQ_NTC_WARN_CH7_MASK),
+};
+
+static const struct regmap_irq s2mpg12_pmic_irqs[] = {
+	REGMAP_IRQ_REG(S2MPG12_IRQ_PWRONF, 0, S2MPG12_IRQ_PWRONF_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_PWRONR, 0, S2MPG12_IRQ_PWRONR_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_JIGONBF, 0, S2MPG12_IRQ_JIGONBF_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_JIGONBR, 0, S2MPG12_IRQ_JIGONBR_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_ACOKBF, 0, S2MPG12_IRQ_ACOKBF_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_ACOKBR, 0, S2MPG12_IRQ_ACOKBR_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_PWRON1S, 0, S2MPG12_IRQ_PWRON1S_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_MRB, 0, S2MPG12_IRQ_MRB_MASK),
+
+	REGMAP_IRQ_REG(S2MPG12_IRQ_RTC60S, 1, S2MPG12_IRQ_RTC60S_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_RTCA1, 1, S2MPG12_IRQ_RTCA1_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_RTCA0, 1, S2MPG12_IRQ_RTCA0_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_RTC1S, 1, S2MPG12_IRQ_RTC1S_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_WTSR_COLDRST, 1, S2MPG12_IRQ_WTSR_COLDRST_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_WTSR, 1, S2MPG12_IRQ_WTSR_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_WRST, 1, S2MPG12_IRQ_WRST_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_SMPL, 1, S2MPG12_IRQ_SMPL_MASK),
+
+	REGMAP_IRQ_REG(S2MPG12_IRQ_120C, 2, S2MPG12_IRQ_INT120C_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_140C, 2, S2MPG12_IRQ_INT140C_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_TSD, 2, S2MPG12_IRQ_TSD_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_SCL_SOFTRST, 2, S2MPG12_IRQ_SCL_SOFTRST_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_WLWP_ACC, 2, S2MPG12_IRQ_WLWP_ACC_MASK),
+
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B1M, 3, S2MPG12_IRQ_OCP_B1M_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B2M, 3, S2MPG12_IRQ_OCP_B2M_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B3M, 3, S2MPG12_IRQ_OCP_B3M_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B4M, 3, S2MPG12_IRQ_OCP_B4M_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B5M, 3, S2MPG12_IRQ_OCP_B5M_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B6M, 3, S2MPG12_IRQ_OCP_B6M_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B7M, 3, S2MPG12_IRQ_OCP_B7M_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B8M, 3, S2MPG12_IRQ_OCP_B8M_MASK),
+
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B9M, 4, S2MPG12_IRQ_OCP_B9M_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_OCP_B10M, 4, S2MPG12_IRQ_OCP_B10M_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_SMPL_TIMEOUT, 4, S2MPG12_IRQ_SMPL_TIMEOUT_MASK),
+	REGMAP_IRQ_REG(S2MPG12_IRQ_WTSR_TIMEOUT, 4, S2MPG12_IRQ_WTSR_TIMEOUT_MASK),
 };
 
 static const struct regmap_irq s2mps11_irqs[] = {
@@ -476,6 +519,80 @@ static struct regmap_irq_chip_data *sec_irq_init_s2mpg1x(struct sec_pmic_dev *se
 	return s2mpg1x_add_chained_pmic(sec_pmic, chained_pirq, irq_data, chained_irq_chip);
 }
 
+/*
+ * S2MPG12 has no common interrupt register: it reports PMIC events in-band,
+ * and the SoC's VGPIO2AP block raises them as one level interrupt that stays
+ * asserted until its pending bit is written back. The status registers clear
+ * on read and must be read as one block: regmap-irq does a bulk read here.
+ */
+static const struct regmap_irq_chip s2mpg12_irq_chip_pmic = {
+	.name = "s2mpg12-pmic",
+	.domain_suffix = "pmic",
+	.status_base = S2MPG12_PMIC_INT1,
+	.mask_base = S2MPG12_PMIC_INT1M,
+	.num_regs = 5,
+	.irqs = s2mpg12_pmic_irqs,
+	.num_irqs = ARRAY_SIZE(s2mpg12_pmic_irqs),
+};
+
+static int s2mpg12_irq_ack_vgpio(void *irq_drv_data)
+{
+	struct regmap *vgpio2ap = irq_drv_data;
+	unsigned int pend;
+	int ret;
+
+	ret = regmap_read(vgpio2ap, S2MPG12_VGPIO2AP_INTC0_IPEND, &pend);
+	if (!ret && pend)
+		ret = regmap_write(vgpio2ap, S2MPG12_VGPIO2AP_INTC0_IPEND, pend);
+
+	return ret;
+}
+
+static struct regmap_irq_chip_data *sec_irq_init_s2mpg12(struct sec_pmic_dev *sec_pmic)
+{
+	struct device *dev = sec_pmic->dev;
+	struct regmap_irq_chip_data *irq_data;
+	struct regmap_irq_chip *chip;
+	struct regmap *regmap_common, *regmap_meter, *vgpio2ap;
+	int ret;
+
+	vgpio2ap = syscon_regmap_lookup_by_phandle(dev->of_node, "google,vgpio2ap-sysreg");
+	if (IS_ERR(vgpio2ap))
+		return dev_err_cast_probe(dev, vgpio2ap, "no VGPIO2AP sysreg\n");
+
+	regmap_common = dev_get_regmap(dev, "common");
+	regmap_meter = dev_get_regmap(dev, "meter");
+	if (!regmap_common || !regmap_meter)
+		return dev_err_ptr_probe(dev, -EINVAL, "missing common or meter regmap\n");
+
+	/* Nothing handles the power meter's interrupts: keep them masked. */
+	ret = regmap_write(regmap_meter, S2MPG12_METER_INT1M, 0xff);
+	if (!ret)
+		ret = regmap_write(regmap_meter, S2MPG12_METER_INT2M, 0xff);
+	if (ret)
+		return dev_err_ptr_probe(dev, ret, "failed to mask meter interrupts\n");
+
+	chip = devm_kmemdup(dev, &s2mpg12_irq_chip_pmic, sizeof(*chip), GFP_KERNEL);
+	if (!chip)
+		return ERR_PTR(-ENOMEM);
+	chip->handle_pre_irq = s2mpg12_irq_ack_vgpio;
+	chip->irq_drv_data = vgpio2ap;
+
+	/* Masks every PMIC source first, then requests the interrupt. */
+	ret = devm_regmap_add_irq_chip(dev, sec_pmic->regmap_pmic, sec_pmic->irq,
+				       IRQF_ONESHOT, 0, chip, &irq_data);
+	if (ret)
+		return dev_err_ptr_probe(dev, ret, "Failed to add %s IRQ chip\n", chip->name);
+
+	/* Route PMIC events (and only those) to the in-band interrupt. */
+	ret = regmap_write(regmap_common, S2MPG12_COMMON_IBIM1,
+			   0xff & ~S2MPG12_COMMON_IBIM1_PMIC);
+	if (ret)
+		return dev_err_ptr_probe(dev, ret, "failed to unmask PMIC IBI\n");
+
+	return irq_data;
+}
+
 struct regmap_irq_chip_data *sec_irq_init(struct sec_pmic_dev *sec_pmic)
 {
 	struct regmap_irq_chip_data *sec_irq_chip_data;
@@ -494,6 +611,8 @@ struct regmap_irq_chip_data *sec_irq_init(struct sec_pmic_dev *sec_pmic)
 	case S2MPG10:
 	case S2MPG11:
 		return sec_irq_init_s2mpg1x(sec_pmic);
+	case S2MPG12:
+		return sec_irq_init_s2mpg12(sec_pmic);
 	case S2MPS11X:
 		sec_irq_chip = &s2mps11_irq_chip;
 		break;
