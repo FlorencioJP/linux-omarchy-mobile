@@ -887,9 +887,30 @@ static struct simpledrm_device *simpledrm_device_create(struct drm_driver *drv,
 
 DEFINE_DRM_GEM_FOPS(simpledrm_fops);
 
+/*
+ * Scanout buffers may be rendered by a GPU that is not cache-coherent, for
+ * example through Mesa's kmsro, which allocates them here as dumb buffers.
+ * The damage blit reads them with the CPU but cannot invalidate the CPU
+ * caches for native buffers, so map them write-combined: otherwise the
+ * blit copies stale cache lines, which show up as short dashes on screen.
+ */
+static struct drm_gem_object *simpledrm_gem_create_object(struct drm_device *dev,
+							   size_t size)
+{
+	struct drm_gem_shmem_object *shmem;
+
+	shmem = kzalloc_obj(*shmem);
+	if (!shmem)
+		return ERR_PTR(-ENOMEM);
+	shmem->map_wc = true;
+
+	return &shmem->base;
+}
+
 static struct drm_driver simpledrm_driver = {
 	DRM_GEM_SHMEM_DRIVER_OPS,
 	DRM_FBDEV_SHMEM_DRIVER_OPS,
+	.gem_create_object	= simpledrm_gem_create_object,
 	.name			= DRIVER_NAME,
 	.desc			= DRIVER_DESC,
 	.major			= DRIVER_MAJOR,
