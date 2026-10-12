@@ -37,7 +37,19 @@
 			height = <3120>;
 			stride = <(1440 * 4)>;
 			format = "a8r8g8b8";
+			panel = <&panel>;
 		};
+	};
+
+	/*
+	 * The Samsung S6E3HC4 command-mode OLED. No driver yet: the bootloader
+	 * leaves it running for simplefb, which reads its physical size here.
+	 */
+	panel: panel {
+		compatible = "samsung,s6e3hc4";
+		width-mm = <71>;
+		height-mm = <155>;
+		status = "disabled";
 	};
 
 	gpio-keys {
