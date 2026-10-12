@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config DRM_GS_DSIM_CMD
+	tristate "Google gs201 DSIM command path for a bootloader display"
+	depends on ARCH_EXYNOS || COMPILE_TEST
+	depends on OF && DRM
+	select DRM_MIPI_DSI
+	help
+	  Registers a MIPI DSI host on the gs201 (Tensor G2) DSIM so that a
+	  panel driver can send DCS commands, for brightness and display
+	  on/off, to a panel the bootloader left running. The display
+	  pipeline itself stays as the bootloader set it up and is scanned
+	  out through simpledrm.
+
+	  This is a bring-up driver until a full DECON/DSIM KMS driver
+	  exists. Packets are only sent once the allow_tx module parameter
+	  is set.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called gs-dsim-cmd.
