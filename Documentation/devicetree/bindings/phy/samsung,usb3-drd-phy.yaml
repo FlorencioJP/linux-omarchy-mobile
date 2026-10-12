@@ -26,6 +26,7 @@ properties:
   compatible:
     enum:
       - google,gs101-usb31drd-phy
+      - google,gs201-usb31drd-phy
       - samsung,exynos2200-usb32drd-phy
       - samsung,exynos5250-usbdrd-phy
       - samsung,exynos5420-usbdrd-phy
@@ -177,6 +178,41 @@ allOf:
         - vdd33-usb20-supply
         - vdda-usbdp-supply
         - vddh-usbdp-supply
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: google,gs201-usb31drd-phy
+    then:
+      allOf:
+        - $ref: /schemas/usb/usb-switch.yaml#
+
+      properties:
+        clocks:
+          items:
+            - description: Gate of main PHY clock
+            - description: Gate of PHY reference clock
+            - description: Gate of control interface AXI clock
+            - description: Gate of control interface APB clock
+            - description: Gate of SCL APB clock
+
+        clock-names:
+          items:
+            - const: phy
+            - const: ref
+            - const: ctrl_aclk
+            - const: ctrl_pclk
+            - const: scl_pclk
+
+        reg:
+          minItems: 3
+
+        reg-names:
+          minItems: 3
+
+      required:
+        - reg-names
 
   - if:
       properties:
