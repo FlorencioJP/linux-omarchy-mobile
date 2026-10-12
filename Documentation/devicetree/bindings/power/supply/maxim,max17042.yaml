@@ -11,6 +11,16 @@ maintainers:
 
 allOf:
   - $ref: power-supply.yaml#
+  - if:
+      not:
+        properties:
+          compatible:
+            contains:
+              const: maxim,max77759-fg
+    then:
+      properties:
+        maxim,fg-model: false
+        maxim,fg-params: false
 
 properties:
   compatible:
@@ -66,6 +76,38 @@ properties:
     description:
       Voltage threshold to report battery as over voltage (in mV).
       Default is not to report over-voltage events.
+
+  maxim,fg-model:
+    $ref: /schemas/types.yaml#/definitions/uint16-array
+    minItems: 48
+    maxItems: 48
+    description:
+      Cell characterization table of the MAX77759 fuel gauge (its "M5"
+      ModelGauge m5 algorithm), as produced by Maxim's battery modelling for
+      the cell. Written to registers 0x80-0xaf, followed by a model load, only
+      after a power-on reset of the gauge (the gauge has no non-volatile
+      memory).
+
+  maxim,fg-params:
+    $ref: /schemas/types.yaml#/definitions/uint16-array
+    minItems: 27
+    maxItems: 28
+    description:
+      Register values that go with maxim,fg-model, from the same battery
+      model, in this fixed order (register address in parentheses)
+        IAvgEmpty (0x36, not written), RelaxCfg (0x2a), LearnCfg (0x28),
+        Config (0x1d), Config2 (0xbb), FullSOCThr (0x13), FullCapRep (0x35),
+        DesignCap (0x18), dPAcc (0x46), dQAcc (0x45), FullCapNom (0x23),
+        VEmpty (0x3a), QRTable00 (0x12), QRTable10 (0x22), QRTable20 (0x32),
+        QRTable30 (0x42), RComp0 (0x38), TempCo (0x39), IChgTerm (0x1e),
+        TGain (0x2c), TOff (0x2d), Curve (0xb9), MiscCfg (0x2b), AtRate (0x04),
+        ConvgCfg (0x49), FilterCfg (0x29), TaskPeriod (0x3c) and, optionally,
+        CGain (0x2e, 0x0400 if absent). Capacities are in units of the
+        capacity LSB set by TaskPeriod.
+
+dependencies:
+  maxim,fg-model: [ 'maxim,fg-params' ]
+  maxim,fg-params: [ 'maxim,fg-model' ]
 
 required:
   - compatible
