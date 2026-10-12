@@ -2309,10 +2309,17 @@ static const struct exynos_ufs_drv_data gs101_ufs_drvs = {
 /*
  * gs201 fixed the PRDT, request list clear and OCS issues of gs101: its UTRD
  * offsets and lengths follow the UFSHCI specification.
+ *
+ * Idle power management is software Hibern8 on clock gating
+ * (UFSHCD_CAP_HIBERN8_WITH_CLK_GATING), as in the vendor driver: it always
+ * marks auto-hibernate broken on this SoC, and only its later SoCs program
+ * the host timers that auto-hibernate needs. Don't let the core enable the
+ * auto-hibernate timer as well, so the two don't race for the link.
  */
 static const struct exynos_ufs_drv_data gs201_ufs_drvs = {
 	.uic_attr		= &gs101_uic_attr,
 	.quirks			= UFSHCI_QUIRK_SKIP_MANUAL_WB_FLUSH_CTRL |
+				  UFSHCD_QUIRK_BROKEN_AUTO_HIBERN8 |
 				  UFSHCD_QUIRK_SKIP_DEF_UNIPRO_TIMEOUT_SETTING,
 	.opts			= EXYNOS_UFS_OPT_SKIP_CONFIG_PHY_ATTR |
 				  EXYNOS_UFS_OPT_UFSPR_SECURE |
