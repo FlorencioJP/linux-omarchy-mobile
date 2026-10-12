@@ -121,6 +121,8 @@
 	 * mode; simplefb scans out its framebuffer and reads the panel size
 	 * here. Enabled only for display bring-up (DISPLAY-PLAN.md, gate D1).
 	 */
+	status = "okay";
+
 	panel: panel@0 {
 		compatible = "samsung,s6e3hc4";
 		reg = <0>;
@@ -130,6 +132,15 @@
 		width-mm = <71>;
 		height-mm = <155>;
 	};
+};
+
+/* Display bring-up, gate D1b: the DPU and DISP clock controllers. */
+&cmu_dpu {
+	status = "okay";
+};
+
+&cmu_disp {
+	status = "okay";
 };
 
 &gpu {
