@@ -1519,6 +1519,15 @@ config REGULATOR_SLG51000
 	  The SLG51000 is seven compact and customizable low dropout
 	  regulators.
 
+config REGULATOR_SLG51002
+	tristate "Dialog Semiconductor SLG51002 camera PMIC regulators"
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  Say y here to support the Dialog Semiconductor SLG51002, a camera
+	  power management IC with eight LDOs and four load switches, used
+	  on Google's Pixel 7 boards.
+
 config REGULATOR_SPACEMIT_P1
 	tristate "SpacemiT P1 regulators"
 	depends on ARCH_SPACEMIT || COMPILE_TEST

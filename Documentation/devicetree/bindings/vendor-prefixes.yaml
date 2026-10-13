@@ -138,6 +138,8 @@ patternProperties:
     description: Anbernic
   "^andestech,.*":
     description: Andes Technology Corporation
+  "^android,.*":
+    description: Android Open Source Project
   "^anlogic,.*":
     description: Shanghai Anlogic Infotech Co., Ltd.
   "^anvo,.*":
@@ -1487,6 +1489,8 @@ patternProperties:
     description: Seeed Technology Co., Ltd
   "^seirobotics,.*":
     description: Shenzhen SEI Robotics Co., Ltd
+  "^semco,.*":
+    description: Samsung Electro-Mechanics Co., Ltd.
   "^semtech,.*":
     description: Semtech Corporation
   "^senseair,.*":

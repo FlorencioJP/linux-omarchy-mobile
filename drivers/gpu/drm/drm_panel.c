@@ -370,6 +370,26 @@ int drm_panel_get_modes(struct drm_panel *panel,
 }
 EXPORT_SYMBOL(drm_panel_get_modes);
 
+/**
+ * drm_panel_set_refresh_rate - switch a running panel's refresh rate
+ * @panel: DRM panel
+ * @hz: new refresh rate, in Hz
+ *
+ * Asks an enabled panel to change its refresh rate, keeping the resolution
+ * and without a power cycle (see &drm_panel_funcs.set_refresh_rate).
+ *
+ * Return: 0 on success, -EOPNOTSUPP if the panel can't switch its rate, or
+ * another negative error code from the panel driver.
+ */
+int drm_panel_set_refresh_rate(struct drm_panel *panel, unsigned int hz)
+{
+	if (!panel || !panel->funcs || !panel->funcs->set_refresh_rate)
+		return -EOPNOTSUPP;
+
+	return panel->funcs->set_refresh_rate(panel, hz);
+}
+EXPORT_SYMBOL(drm_panel_set_refresh_rate);
+
 static void __drm_panel_free(struct kref *kref)
 {
 	struct drm_panel *panel = container_of(kref, struct drm_panel, refcount);

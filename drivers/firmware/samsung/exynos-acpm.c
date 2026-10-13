@@ -20,6 +20,7 @@
 #include <linux/mailbox/exynos-message.h>
 #include <linux/mailbox_client.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/mutex.h>
 #include <linux/math.h>
 #include <linux/of.h>
@@ -40,6 +41,14 @@
 #define ACPM_TX_TIMEOUT_US		500000
 
 #define ACPM_GS101_INITDATA_BASE	0xa000
+#define ACPM_GS201_INITDATA_BASE	0xa000
+
+/* Sanity limit for the channel count read from SRAM. */
+#define ACPM_MAX_CHANS			64
+
+static bool dump_chans;
+module_param(dump_chans, bool, 0444);
+MODULE_PARM_DESC(dump_chans, "Print the raw SRAM channel table at probe");
 
 /**
  * struct acpm_shmem - shared memory configuration information.
@@ -139,6 +148,8 @@ struct acpm_rx_data {
  * @id:		channel ID.
  * @poll_completion:	indicates if the transfer needs to be polled for
  *			completion or interrupt mode is used.
+ * @usable:	the channel's queues lie inside the SRAM and it has a mailbox
+ *		channel; transfers on other channels are refused.
  * @bitmap_seqnum: bitmap that tracks the messages on the TX/RX queues.
  * @rx_data:	internal buffer used to drain the RX queue.
  */
@@ -156,6 +167,7 @@ struct acpm_chan {
 	u8 seqnum;
 	u8 id;
 	bool poll_completion;
+	bool usable;
 
 	DECLARE_BITMAP(bitmap_seqnum, ACPM_SEQNUM_MAX - 1);
 	struct acpm_rx_data rx_data[ACPM_SEQNUM_MAX];
@@ -165,6 +177,7 @@ struct acpm_chan {
  * struct acpm_info - driver's private data.
  * @shmem:	pointer to the SRAM configuration data.
  * @sram_base:	base address of SRAM.
+ * @sram_size:	size of SRAM.
  * @chans:	pointer to the ACPM channel parameters retrieved from SRAM.
  * @dev:	pointer to the exynos-acpm device.
  * @handle:	instance of acpm_handle to send to clients.
@@ -173,6 +186,7 @@ struct acpm_chan {
 struct acpm_info {
 	struct acpm_shmem __iomem *shmem;
 	void __iomem *sram_base;
+	resource_size_t sram_size;
 	struct acpm_chan *chans;
 	struct device *dev;
 	struct acpm_handle handle;
@@ -471,6 +485,8 @@ int acpm_do_xfer(struct acpm_handle *handle, const struct acpm_xfer *xfer)
 		return -EINVAL;
 
 	achan = &acpm->chans[xfer->acpm_chan_id];
+	if (!achan->usable)
+		return -ENODEV;
 
 	if (!xfer->txd ||
 	    (xfer->txcnt * sizeof(*xfer->txd) > achan->mlen) ||
@@ -546,12 +562,19 @@ void acpm_set_xfer(struct acpm_xfer *xfer, u32 *cmd, size_t cmdcnt,
  * @achan:	ACPM channel info.
  * @chan_shmem:	__iomem pointer to a channel described in shared memory.
  */
-static void acpm_chan_shmem_get_params(struct acpm_chan *achan,
+static int acpm_chan_shmem_get_params(struct acpm_chan *achan,
 				struct acpm_chan_shmem __iomem *chan_shmem)
 {
 	void __iomem *base = achan->acpm->sram_base;
+	resource_size_t size = achan->acpm->sram_size;
 	struct acpm_queue *rx = &achan->rx;
 	struct acpm_queue *tx = &achan->tx;
+	u32 offs[] = {
+		readl(&chan_shmem->rx_base), readl(&chan_shmem->rx_rear),
+		readl(&chan_shmem->rx_front), readl(&chan_shmem->tx_base),
+		readl(&chan_shmem->tx_rear), readl(&chan_shmem->tx_front),
+	};
+	int i;
 
 	achan->mlen = readl(&chan_shmem->mlen);
 	achan->poll_completion = readl(&chan_shmem->poll_completion);
@@ -566,8 +589,24 @@ static void acpm_chan_shmem_get_params(struct acpm_chan *achan,
 	rx->rear = base + readl(&chan_shmem->tx_rear);
 	rx->front = base + readl(&chan_shmem->tx_front);
 
-	dev_vdbg(achan->acpm->dev, "ID = %d poll = %d, mlen = %d, qlen = %d\n",
-		 achan->id, achan->poll_completion, achan->mlen, achan->qlen);
+	dev_dbg(achan->acpm->dev,
+		"chan %u: poll %d mlen %u qlen %u tx %#x/%#x/%#x rx %#x/%#x/%#x\n",
+		achan->id, achan->poll_completion, achan->mlen, achan->qlen,
+		offs[0], offs[1], offs[2], offs[3], offs[4], offs[5]);
+
+	if (achan->mlen && !achan->qlen)
+		return -EINVAL;
+
+	/* Every queue, and the messages in it, must lie inside the SRAM. */
+	for (i = 0; i < ARRAY_SIZE(offs); i++)
+		if (offs[i] >= size)
+			return -EINVAL;
+
+	if ((u64)offs[0] + (u64)achan->qlen * achan->mlen > size ||
+	    (u64)offs[3] + (u64)achan->qlen * achan->mlen > size)
+		return -EINVAL;
+
+	return 0;
 }
 
 /**
@@ -605,6 +644,21 @@ static int acpm_achan_alloc_cmds(struct acpm_chan *achan)
  * acpm_free_mbox_chans() - free mailbox channels.
  * @data:	pointer to driver data.
  */
+/* Print the 18 raw words of one SRAM channel descriptor. */
+static void acpm_chan_dump(struct device *dev, const char *why, int i,
+			   struct acpm_chan_shmem __iomem *chan_shmem)
+{
+	u32 w[sizeof(*chan_shmem) / sizeof(u32)];
+	int k;
+
+	for (k = 0; k < ARRAY_SIZE(w); k++)
+		w[k] = readl((u32 __iomem *)chan_shmem + k);
+
+	dev_info(dev, "chan %d: %sid %u type %u rx %#x/%#x/%#x indr %#x/%#x/%#x tx %#x/%#x/%#x qlen %u mlen %u %#x/%#x poll %u\n",
+		 i, why, w[0], w[3], w[4], w[5], w[6], w[7], w[8], w[9],
+		 w[10], w[11], w[12], w[13], w[14], w[15], w[16], w[17]);
+}
+
 static void acpm_free_mbox_chans(void *data)
 {
 	struct acpm_info *acpm = data;
@@ -630,6 +684,10 @@ static int acpm_channels_init(struct acpm_info *acpm)
 	int i, ret;
 
 	acpm->num_chans = readl(&shmem->num_chans);
+	if (!acpm->num_chans || acpm->num_chans > ACPM_MAX_CHANS)
+		return dev_err_probe(dev, -ENODEV,
+				     "Implausible channel count %u in SRAM.\n",
+				     acpm->num_chans);
 	acpm->chans = devm_kcalloc(dev, acpm->num_chans, sizeof(*acpm->chans),
 				   GFP_KERNEL);
 	if (!acpm->chans)
@@ -639,6 +697,11 @@ static int acpm_channels_init(struct acpm_info *acpm)
 	if (ret)
 		return dev_err_probe(dev, ret, "Failed to add mbox free action.\n");
 
+	if ((u64)readl(&shmem->chans) +
+	    (u64)acpm->num_chans * sizeof(*chans_shmem) > acpm->sram_size)
+		return dev_err_probe(dev, -ENODEV,
+				     "Channel table outside the SRAM.\n");
+
 	chans_shmem = acpm->sram_base + readl(&shmem->chans);
 
 	for (i = 0; i < acpm->num_chans; i++) {
@@ -647,21 +710,40 @@ static int acpm_channels_init(struct acpm_info *acpm)
 		struct mbox_client *cl = &achan->cl;
 
 		achan->acpm = acpm;
+		mutex_init(&achan->rx_lock);
+		mutex_init(&achan->tx_lock);
 
-		acpm_chan_shmem_get_params(achan, chan_shmem);
+		if (dump_chans)
+			acpm_chan_dump(dev, "", i, chan_shmem);
+
+		/*
+		 * A channel the firmware describes with queues outside the
+		 * SRAM is not one this driver can use (the AP may not own it).
+		 * Skip it rather than failing every other channel.
+		 */
+		ret = acpm_chan_shmem_get_params(achan, chan_shmem);
+		if (ret) {
+			acpm_chan_dump(dev, "skipped, queues outside the SRAM: ",
+				       i, chan_shmem);
+			achan->mlen = 0;
+			continue;
+		}
 
 		ret = acpm_achan_alloc_cmds(achan);
 		if (ret)
 			return ret;
 
-		mutex_init(&achan->rx_lock);
-		mutex_init(&achan->tx_lock);
-
 		cl->dev = dev;
 
 		achan->chan = mbox_request_channel(cl, 0);
-		if (IS_ERR(achan->chan))
-			return PTR_ERR(achan->chan);
+		if (IS_ERR(achan->chan)) {
+			dev_warn(dev, "chan %d: no mailbox channel (%pe), skipped\n",
+				 i, achan->chan);
+			achan->chan = NULL;
+			continue;
+		}
+
+		achan->usable = true;
 	}
 
 	return 0;
@@ -707,6 +789,7 @@ static int acpm_probe(struct platform_device *pdev)
 	struct acpm_info *acpm;
 	resource_size_t size;
 	struct resource res;
+	unsigned int i, usable;
 	int ret;
 
 	acpm = devm_kzalloc(dev, sizeof(*acpm), GFP_KERNEL);
@@ -725,6 +808,7 @@ static int acpm_probe(struct platform_device *pdev)
 	if (!acpm->sram_base)
 		return dev_err_probe(dev, -ENOMEM,
 				     "Failed to ioremap shared memory.\n");
+	acpm->sram_size = size;
 
 	match_data = of_device_get_match_data(dev);
 	if (!match_data)
@@ -737,6 +821,10 @@ static int acpm_probe(struct platform_device *pdev)
 	ret = acpm_channels_init(acpm);
 	if (ret)
 		return ret;
+
+	for (i = 0, usable = 0; i < acpm->num_chans; i++)
+		usable += acpm->chans[i].usable;
+	dev_info(dev, "%u channels, %u usable\n", acpm->num_chans, usable);
 
 	acpm->handle.ops = &exynos_acpm_driver_ops;
 
@@ -881,10 +969,18 @@ static const struct acpm_match_data acpm_gs101 = {
 	.acpm_clk_dev_name = "gs101-acpm-clk",
 };
 
+static const struct acpm_match_data acpm_gs201 = {
+	.initdata_base = ACPM_GS201_INITDATA_BASE,
+	.acpm_clk_dev_name = "gs201-acpm-clk",
+};
+
 static const struct of_device_id acpm_match[] = {
 	{
 		.compatible = "google,gs101-acpm-ipc",
 		.data = &acpm_gs101,
+	}, {
+		.compatible = "google,gs201-acpm-ipc",
+		.data = &acpm_gs201,
 	},
 	{},
 };

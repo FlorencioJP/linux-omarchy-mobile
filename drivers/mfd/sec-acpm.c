@@ -14,6 +14,8 @@
 #include <linux/mfd/samsung/rtc.h>
 #include <linux/mfd/samsung/s2mpg10.h>
 #include <linux/mfd/samsung/s2mpg11.h>
+#include <linux/mfd/samsung/s2mpg12.h>
+#include <linux/mfd/samsung/s2mpg13.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -35,6 +37,10 @@ struct sec_pmic_acpm_platform_data {
 	const struct regmap_config *regmap_cfg_pmic;
 	const struct regmap_config *regmap_cfg_rtc;
 	const struct regmap_config *regmap_cfg_meter;
+	const struct regmap_config *regmap_cfg_gpio;
+
+	/* No interrupt line is wired up for this PMIC (yet). */
+	bool no_irq;
 };
 
 static const struct regmap_range s2mpg10_common_registers[] = {
@@ -365,6 +371,189 @@ static const struct regmap_config s2mpg11_regmap_config_meter = {
 	.cache_type = REGCACHE_FLAT,
 };
 
+/*
+ * S2MPG12 (gs201 main PMIC): only what the RTC and the interrupt controller
+ * need. Writes are limited to the interrupt masks and the RTC, so that
+ * nothing here can change a rail. No caching: every access goes to the PMIC.
+ */
+static const struct regmap_range s2mpg12_common_registers[] = {
+	regmap_reg_range(0x00, 0x10), /* VGPIO, I3C, IBI, CHIPID, IBI masks */
+	regmap_reg_range(0x25, 0x25), /* TEST_MODE2 */
+};
+
+static const struct regmap_range s2mpg12_common_wr_registers[] = {
+	regmap_reg_range(S2MPG12_COMMON_IBIM1, S2MPG12_COMMON_IBIM2),
+};
+
+static const struct regmap_access_table s2mpg12_common_wr_table = {
+	.yes_ranges = s2mpg12_common_wr_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_common_wr_registers),
+};
+
+static const struct regmap_access_table s2mpg12_common_rd_table = {
+	.yes_ranges = s2mpg12_common_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_common_registers),
+};
+
+static const struct regmap_config s2mpg12_regmap_config_common = {
+	.name = "common",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG12_COMMON_TEST_MODE2,
+	.wr_table = &s2mpg12_common_wr_table,
+	.rd_table = &s2mpg12_common_rd_table,
+	.cache_type = REGCACHE_NONE,
+};
+
+static const struct regmap_range s2mpg12_pmic_wr_registers[] = {
+	regmap_reg_range(S2MPG12_PMIC_INT1M, S2MPG12_PMIC_INT5M),
+};
+
+static const struct regmap_range s2mpg12_pmic_precious_registers[] = {
+	regmap_reg_range(S2MPG12_PMIC_INT1, S2MPG12_PMIC_INT5), /* clear on read */
+};
+
+static const struct regmap_access_table s2mpg12_pmic_wr_table = {
+	.yes_ranges = s2mpg12_pmic_wr_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_pmic_wr_registers),
+};
+
+static const struct regmap_access_table s2mpg12_pmic_precious_table = {
+	.yes_ranges = s2mpg12_pmic_precious_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_pmic_precious_registers),
+};
+
+static const struct regmap_config s2mpg12_regmap_config_pmic = {
+	.name = "pmic",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG12_PMIC_SW_RESET,
+	.wr_table = &s2mpg12_pmic_wr_table,
+	.precious_table = &s2mpg12_pmic_precious_table,
+	.cache_type = REGCACHE_NONE,
+};
+
+static const struct regmap_config s2mpg12_regmap_config_rtc = {
+	.name = "rtc",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG12_RTC_LAST,
+	.cache_type = REGCACHE_NONE,
+};
+
+static const struct regmap_range s2mpg12_meter_registers[] = {
+	regmap_reg_range(S2MPG12_METER_INT1, S2MPG12_METER_INT2M),
+};
+
+static const struct regmap_range s2mpg12_meter_wr_registers[] = {
+	regmap_reg_range(S2MPG12_METER_INT1M, S2MPG12_METER_INT2M),
+};
+
+static const struct regmap_access_table s2mpg12_meter_wr_table = {
+	.yes_ranges = s2mpg12_meter_wr_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_meter_wr_registers),
+};
+
+static const struct regmap_access_table s2mpg12_meter_rd_table = {
+	.yes_ranges = s2mpg12_meter_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg12_meter_registers),
+};
+
+static const struct regmap_config s2mpg12_regmap_config_meter = {
+	.name = "meter",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG12_METER_INT2M,
+	.wr_table = &s2mpg12_meter_wr_table,
+	.rd_table = &s2mpg12_meter_rd_table,
+	.cache_type = REGCACHE_NONE,
+};
+
+/*
+ * S2MPG13 (gs201 sub-PMIC): only its LDOs and GPIOs so far. The common block
+ * is read only. In the PM block only the LDO control registers can be
+ * written, and in the GPIO block only the per-pin control registers. The
+ * interrupt status registers (clear on read) are never read, so nothing here
+ * can touch a buck converter or lose an interrupt. No caching.
+ */
+static const struct regmap_range s2mpg13_common_registers[] = {
+	regmap_reg_range(S2MPG13_COMMON_VGPIO0, S2MPG13_COMMON_IBIM2),
+};
+
+static const struct regmap_access_table s2mpg13_common_rd_table = {
+	.yes_ranges = s2mpg13_common_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg13_common_registers),
+};
+
+static const struct regmap_access_table s2mpg13_common_wr_table = { };
+
+static const struct regmap_config s2mpg13_regmap_config_common = {
+	.name = "common",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG13_COMMON_IBIM2,
+	.wr_table = &s2mpg13_common_wr_table,
+	.rd_table = &s2mpg13_common_rd_table,
+	.cache_type = REGCACHE_NONE,
+};
+
+static const struct regmap_range s2mpg13_pmic_rd_registers[] = {
+	regmap_reg_range(S2MPG13_PMIC_INT1M, S2MPG13_PMIC_INT4M),
+	regmap_reg_range(S2MPG13_PMIC_L1S_CTRL, S2MPG13_PMIC_LDO_CTRL2),
+};
+
+static const struct regmap_range s2mpg13_pmic_wr_registers[] = {
+	regmap_reg_range(S2MPG13_PMIC_L1S_CTRL, S2MPG13_PMIC_LDO_CTRL2),
+};
+
+static const struct regmap_access_table s2mpg13_pmic_rd_table = {
+	.yes_ranges = s2mpg13_pmic_rd_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg13_pmic_rd_registers),
+};
+
+static const struct regmap_access_table s2mpg13_pmic_wr_table = {
+	.yes_ranges = s2mpg13_pmic_wr_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg13_pmic_wr_registers),
+};
+
+static const struct regmap_config s2mpg13_regmap_config_pmic = {
+	.name = "pmic",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG13_PMIC_LDO_CTRL2,
+	.wr_table = &s2mpg13_pmic_wr_table,
+	.rd_table = &s2mpg13_pmic_rd_table,
+	.cache_type = REGCACHE_NONE,
+};
+
+static const struct regmap_range s2mpg13_gpio_rd_registers[] = {
+	regmap_reg_range(S2MPG13_GPIO_INT1M, S2MPG13_GPIO_7_MONSEL),
+};
+
+static const struct regmap_range s2mpg13_gpio_wr_registers[] = {
+	regmap_reg_range(S2MPG13_GPIO_0_SET, S2MPG13_GPIO_7_SET),
+};
+
+static const struct regmap_access_table s2mpg13_gpio_rd_table = {
+	.yes_ranges = s2mpg13_gpio_rd_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg13_gpio_rd_registers),
+};
+
+static const struct regmap_access_table s2mpg13_gpio_wr_table = {
+	.yes_ranges = s2mpg13_gpio_wr_registers,
+	.n_yes_ranges = ARRAY_SIZE(s2mpg13_gpio_wr_registers),
+};
+
+static const struct regmap_config s2mpg13_regmap_config_gpio = {
+	.name = "gpio",
+	.reg_bits = ACPM_ADDR_BITS,
+	.val_bits = 8,
+	.max_register = S2MPG13_GPIO_7_MONSEL,
+	.wr_table = &s2mpg13_gpio_wr_table,
+	.rd_table = &s2mpg13_gpio_rd_table,
+	.cache_type = REGCACHE_NONE,
+};
+
 struct sec_pmic_acpm_shared_bus_context {
 	struct acpm_handle *acpm;
 	unsigned int acpm_chan_id;
@@ -377,6 +566,7 @@ enum sec_pmic_acpm_accesstype {
 	SEC_PMIC_ACPM_ACCESSTYPE_RTC = 0x02,
 	SEC_PMIC_ACPM_ACCESSTYPE_METER = 0x0a,
 	SEC_PMIC_ACPM_ACCESSTYPE_WLWP = 0x0b,
+	SEC_PMIC_ACPM_ACCESSTYPE_GPIO = 0x0c,
 	SEC_PMIC_ACPM_ACCESSTYPE_TRIM = 0x0f,
 };
 
@@ -491,9 +681,13 @@ static int sec_pmic_acpm_probe(struct platform_device *pdev)
 	if (IS_ERR(acpm))
 		return dev_err_probe(dev, PTR_ERR(acpm), "failed to get acpm\n");
 
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0)
-		return irq;
+	if (pdata->no_irq) {
+		irq = 0;
+	} else {
+		irq = platform_get_irq(pdev, 0);
+		if (irq < 0)
+			return irq;
+	}
 
 	shared_ctx = devm_kzalloc(dev, sizeof(*shared_ctx), GFP_KERNEL);
 	if (!shared_ctx)
@@ -520,10 +714,19 @@ static int sec_pmic_acpm_probe(struct platform_device *pdev)
 			return PTR_ERR(regmap);
 	}
 
-	regmap = sec_pmic_acpm_regmap_init(dev, shared_ctx, SEC_PMIC_ACPM_ACCESSTYPE_METER,
-					   pdata->regmap_cfg_meter, true);
-	if (IS_ERR(regmap))
-		return PTR_ERR(regmap);
+	if (pdata->regmap_cfg_meter) {
+		regmap = sec_pmic_acpm_regmap_init(dev, shared_ctx, SEC_PMIC_ACPM_ACCESSTYPE_METER,
+						   pdata->regmap_cfg_meter, true);
+		if (IS_ERR(regmap))
+			return PTR_ERR(regmap);
+	}
+
+	if (pdata->regmap_cfg_gpio) {
+		regmap = sec_pmic_acpm_regmap_init(dev, shared_ctx, SEC_PMIC_ACPM_ACCESSTYPE_GPIO,
+						   pdata->regmap_cfg_gpio, true);
+		if (IS_ERR(regmap))
+			return PTR_ERR(regmap);
+	}
 
 	ret = sec_pmic_probe(dev, pdata->device_type, irq, regmap_pmic, NULL);
 	if (ret)
@@ -559,9 +762,31 @@ static const struct sec_pmic_acpm_platform_data s2mpg11_data = {
 	.regmap_cfg_meter = &s2mpg11_regmap_config_meter,
 };
 
+static const struct sec_pmic_acpm_platform_data s2mpg12_data = {
+	.device_type = S2MPG12,
+	.acpm_chan_id = 2,
+	.speedy_channel = 0,
+	.regmap_cfg_common = &s2mpg12_regmap_config_common,
+	.regmap_cfg_pmic = &s2mpg12_regmap_config_pmic,
+	.regmap_cfg_rtc = &s2mpg12_regmap_config_rtc,
+	.regmap_cfg_meter = &s2mpg12_regmap_config_meter,
+};
+
+static const struct sec_pmic_acpm_platform_data s2mpg13_data = {
+	.device_type = S2MPG13,
+	.acpm_chan_id = 2,
+	.speedy_channel = 1,
+	.regmap_cfg_common = &s2mpg13_regmap_config_common,
+	.regmap_cfg_pmic = &s2mpg13_regmap_config_pmic,
+	.regmap_cfg_gpio = &s2mpg13_regmap_config_gpio,
+	.no_irq = true,
+};
+
 static const struct of_device_id sec_pmic_acpm_of_match[] = {
 	{ .compatible = "samsung,s2mpg10-pmic", .data = &s2mpg10_data, },
 	{ .compatible = "samsung,s2mpg11-pmic", .data = &s2mpg11_data, },
+	{ .compatible = "samsung,s2mpg12-pmic", .data = &s2mpg12_data, },
+	{ .compatible = "samsung,s2mpg13-pmic", .data = &s2mpg13_data, },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, sec_pmic_acpm_of_match);

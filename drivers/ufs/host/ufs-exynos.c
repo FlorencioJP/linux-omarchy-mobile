@@ -243,6 +243,21 @@ static int gs101_ufs_drv_init(struct exynos_ufs *ufs)
 	return exynos_ufs_shareability(ufs);
 }
 
+static int gs201_ufs_drv_init(struct exynos_ufs *ufs)
+{
+	/*
+	 * gs101_ufs_suspend() asserts the device reset, so the link can't
+	 * stay in Hibern8 across system suspend: at the default level the
+	 * first Hibern8 exit on resume fails and the error handler has to
+	 * reset the host and the device. Power the device down and turn the
+	 * link off instead, which resumes through a full re-init, as the
+	 * downstream driver does.
+	 */
+	ufs->hba->spm_lvl = UFS_PM_LVL_5;
+
+	return gs101_ufs_drv_init(ufs);
+}
+
 static int exynosauto_ufs_drv_init(struct exynos_ufs *ufs)
 {
 	return exynos_ufs_shareability(ufs);
@@ -2083,6 +2098,18 @@ static int gs101_ufs_post_link(struct exynos_ufs *ufs)
 	return 0;
 }
 
+static int gs201_ufs_pre_link(struct exynos_ufs *ufs)
+{
+	struct ufs_hba *hba = ufs->hba;
+
+	/* Program the PCS for the 38.4 MHz reference clock used on gs201 */
+	ufshcd_dme_set(hba, UIC_ARG_MIB(0x200), 0x40);
+	ufshcd_dme_set(hba, UIC_ARG_MIB(0x202), 0x02);
+	ufshcd_dme_set(hba, UIC_ARG_MIB(0x200), 0x0);
+
+	return gs101_ufs_pre_link(ufs);
+}
+
 static int gs101_ufs_pre_pwr_change(struct exynos_ufs *ufs,
 					 struct ufs_pa_layer_attr *pwr)
 {
@@ -2294,6 +2321,32 @@ static const struct exynos_ufs_drv_data gs101_ufs_drvs = {
 	.suspend		= gs101_ufs_suspend,
 };
 
+/*
+ * gs201 fixed the PRDT, request list clear and OCS issues of gs101: its UTRD
+ * offsets and lengths follow the UFSHCI specification.
+ *
+ * Idle power management is software Hibern8 on clock gating
+ * (UFSHCD_CAP_HIBERN8_WITH_CLK_GATING), as in the vendor driver: it always
+ * marks auto-hibernate broken on this SoC, and only its later SoCs program
+ * the host timers that auto-hibernate needs. Don't let the core enable the
+ * auto-hibernate timer as well, so the two don't race for the link.
+ */
+static const struct exynos_ufs_drv_data gs201_ufs_drvs = {
+	.uic_attr		= &gs101_uic_attr,
+	.quirks			= UFSHCI_QUIRK_SKIP_MANUAL_WB_FLUSH_CTRL |
+				  UFSHCD_QUIRK_BROKEN_AUTO_HIBERN8 |
+				  UFSHCD_QUIRK_SKIP_DEF_UNIPRO_TIMEOUT_SETTING,
+	.opts			= EXYNOS_UFS_OPT_SKIP_CONFIG_PHY_ATTR |
+				  EXYNOS_UFS_OPT_UFSPR_SECURE |
+				  EXYNOS_UFS_OPT_TIMER_TICK_SELECT,
+	.iocc_mask		= UFS_GS101_SHARABLE,
+	.drv_init		= gs201_ufs_drv_init,
+	.pre_link		= gs201_ufs_pre_link,
+	.post_link		= gs101_ufs_post_link,
+	.pre_pwr_change		= gs101_ufs_pre_pwr_change,
+	.suspend		= gs101_ufs_suspend,
+};
+
 static const struct exynos_ufs_drv_data exynosautov920_ufs_drvs = {
 	.uic_attr               = &exynos7_uic_attr,
 	.quirks                 = UFSHCD_QUIRK_SKIP_DEF_UNIPRO_TIMEOUT_SETTING,
@@ -2312,6 +2365,8 @@ static const struct exynos_ufs_drv_data exynosautov920_ufs_drvs = {
 static const struct of_device_id exynos_ufs_of_match[] = {
 	{ .compatible = "google,gs101-ufs",
 	  .data	      = &gs101_ufs_drvs },
+	{ .compatible = "google,gs201-ufs",
+	  .data	      = &gs201_ufs_drvs },
 	{ .compatible = "samsung,exynos7-ufs",
 	  .data	      = &exynos_ufs_drvs },
 	{ .compatible = "samsung,exynosautov9-ufs",

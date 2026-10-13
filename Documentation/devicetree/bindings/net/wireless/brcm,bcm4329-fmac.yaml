@@ -55,6 +55,7 @@ properties:
           - pci14e4,4425  # BCM4378
           - pci14e4,4433  # BCM4387
           - pci14e4,4434  # BCM4388
+          - pci14e4,4441  # BCM4389
           - pci14e4,449d  # BCM43752
 
   reg:
@@ -123,6 +124,11 @@ properties:
       platforms with different antenna configs to have different firmware and/or
       NVRAM. This would normally be filled in by the bootloader from platform
       configuration data.
+
+  memory-region:
+    maxItems: 1
+    description: A restricted-dma-pool region that all DMA of a PCIe device
+      bounces through, for platforms that limit the device's DMA to it.
 
   clocks:
     items:
