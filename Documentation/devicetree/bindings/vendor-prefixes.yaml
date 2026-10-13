@@ -1487,6 +1487,8 @@ patternProperties:
     description: Seeed Technology Co., Ltd
   "^seirobotics,.*":
     description: Shenzhen SEI Robotics Co., Ltd
+  "^semco,.*":
+    description: Samsung Electro-Mechanics Co., Ltd.
   "^semtech,.*":
     description: Semtech Corporation
   "^senseair,.*":
