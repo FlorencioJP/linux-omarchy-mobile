@@ -26,7 +26,7 @@
 
 	chosen {
 		/* ABL requires bootargs to exist; it appends its own after these. */
-		bootargs = "console=tty0 fbcon=font:TER16x32 quiet splash plymouth.force-scale=1 vt.global_cursor_default=0 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init omandroid.ufs-probe";
+		bootargs = "console=tty0 fbcon=font:TER16x32 quiet splash plymouth.force-scale=1 vt.global_cursor_default=0 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init omamobile.ufs-probe";
 		#address-cells = <2>;
 		#size-cells = <1>;
 		ranges;
