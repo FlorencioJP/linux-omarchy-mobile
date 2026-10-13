@@ -1,0 +1,85 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
+/*
+ * Copyright 2015 Samsung Electronics
+ *
+ * Registers of the Samsung S2MPG12 PMIC, as used with Google's gs201 SoC.
+ */
+
+#ifndef __LINUX_MFD_S2MPG12_H
+#define __LINUX_MFD_S2MPG12_H
+
+#include <linux/bits.h>
+
+/* Common registers (type 0x000) */
+enum s2mpg12_common_reg {
+	S2MPG12_COMMON_VGPIO0,
+	S2MPG12_COMMON_VGPIO1,
+	S2MPG12_COMMON_VGPIO2,
+	S2MPG12_COMMON_VGPIO3,
+	S2MPG12_COMMON_I3C_DAA,
+	S2MPG12_COMMON_IBI0,
+	S2MPG12_COMMON_IBI1,
+	S2MPG12_COMMON_IBI2,
+	S2MPG12_COMMON_IBI3,
+	S2MPG12_COMMON_CHIPID = 0x0b,
+	S2MPG12_COMMON_I3C_CFG1,
+	S2MPG12_COMMON_I3C_CFG2,
+	S2MPG12_COMMON_I3C_STA,
+	S2MPG12_COMMON_IBIM1,
+	S2MPG12_COMMON_IBIM2,
+	S2MPG12_COMMON_TEST_MODE2 = 0x25,
+};
+
+/* S2MPG12_COMMON_IBIM1: in-band interrupt sources, 1 = masked */
+#define S2MPG12_COMMON_IBIM1_PMIC	BIT(0)
+
+/* PMIC (PM) registers (type 0x100) */
+enum s2mpg12_pmic_reg {
+	S2MPG12_PMIC_INT1,
+	S2MPG12_PMIC_INT2,
+	S2MPG12_PMIC_INT3,
+	S2MPG12_PMIC_INT4,
+	S2MPG12_PMIC_INT5,
+	S2MPG12_PMIC_INT1M,
+	S2MPG12_PMIC_INT2M,
+	S2MPG12_PMIC_INT3M,
+	S2MPG12_PMIC_INT4M,
+	S2MPG12_PMIC_INT5M,
+	S2MPG12_PMIC_STATUS1,
+	S2MPG12_PMIC_STATUS2,
+	S2MPG12_PMIC_PWRONSRC,
+	S2MPG12_PMIC_OFFSRC1,
+	S2MPG12_PMIC_OFFSRC2,
+	S2MPG12_PMIC_BUCHG,
+	S2MPG12_PMIC_RTCBUF,
+	S2MPG12_PMIC_CTRL1,
+	S2MPG12_PMIC_SW_RESET = 0xec,
+};
+
+/* S2MPG12_PMIC_STATUS2 */
+#define S2MPG12_STATUS2_RTCA1E		BIT(1)
+#define S2MPG12_STATUS2_RTCA0E		BIT(2)
+
+/*
+ * RTC registers (type 0x200): the same layout as S2MPG10's, see
+ * enum s2mpg10_rtc_reg in rtc.h. The last one is SCRATCH4.
+ */
+#define S2MPG12_RTC_LAST		0x30
+
+/* Meter registers (type 0xa00), only those the core needs */
+enum s2mpg12_meter_reg {
+	S2MPG12_METER_INT1,
+	S2MPG12_METER_INT2,
+	S2MPG12_METER_INT1M = 0x04,
+	S2MPG12_METER_INT2M,
+	S2MPG12_METER_LAST = 0xe5,
+};
+
+/*
+ * The PMIC signals its interrupts in-band (I3C IBI). The SoC turns them into
+ * a level interrupt through its VGPIO2AP block, which latches them in
+ * INTC0_IPEND until written back.
+ */
+#define S2MPG12_VGPIO2AP_INTC0_IPEND	0x290
+
+#endif /* __LINUX_MFD_S2MPG12_H */

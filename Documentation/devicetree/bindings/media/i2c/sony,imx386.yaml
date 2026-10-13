@@ -1,0 +1,124 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/i2c/sony,imx386.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Sony IMX386 image sensor
+
+maintainers:
+  - Derek Ross <derekross@gmail.com>
+
+description:
+  Sony IMX386 12 MP Bayer CMOS sensor with a MIPI CSI-2 D-PHY output,
+  controlled over I2C. Its initialisation and readout modes are loaded from
+  a data file named by firmware-name.
+
+allOf:
+  - $ref: /schemas/media/video-interface-devices.yaml#
+
+properties:
+  compatible:
+    const: sony,imx386
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    maxItems: 1
+
+  reset-gpios:
+    maxItems: 1
+    description: XCLR, active low.
+
+  vif-supply:
+    description: Interface (1.8 V) supply.
+
+  vdig-supply:
+    description: Digital core supply.
+
+  vana-supply:
+    description: Analog supply.
+
+  vbb-supply:
+    description:
+      Board supply feeding the module's analog regulator, to be switched on
+      first where the board's power-up order requires it.
+
+  vbuck-supply:
+    description:
+      Board supply feeding the module's digital regulator, switched on
+      after vbb-supply.
+
+  firmware-name:
+    maxItems: 1
+
+  sony,power-delays-us:
+    items:
+      - description: wait after the last supply
+      - description: wait after the clock starts
+      - description: wait after reset is released
+
+  port:
+    $ref: /schemas/graph.yaml#/$defs/port-base
+    unevaluatedProperties: false
+    description:
+      Output port. A board whose sensor can reach more than one receiver has
+      one endpoint per receiver; only the enabled receiver uses it.
+
+    patternProperties:
+      "^endpoint(@[0-9a-f]+)?$":
+        $ref: /schemas/media/video-interfaces.yaml#
+        unevaluatedProperties: false
+
+        properties:
+          data-lanes:
+            minItems: 2
+            maxItems: 4
+          link-frequencies: true
+
+        required:
+          - data-lanes
+          - link-frequencies
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - reset-gpios
+  - vif-supply
+  - vdig-supply
+  - vana-supply
+  - firmware-name
+  - port
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        camera@1a {
+            compatible = "sony,imx386";
+            reg = <0x1a>;
+            clocks = <&mclk>;
+            reset-gpios = <&gpp6 3 GPIO_ACTIVE_LOW>;
+            vif-supply = <&vddio_cam>;
+            vdig-supply = <&uw_dvdd>;
+            vana-supply = <&uw_avdd>;
+            firmware-name = "omandroid/camera/imx386-uw.bin";
+            orientation = <1>;
+            rotation = <90>;
+
+            port {
+                sensor_out: endpoint {
+                    remote-endpoint = <&csis_in>;
+                    data-lanes = <1 2 3 4>;
+                    link-frequencies = /bits/ 64 <600000000>;
+                };
+            };
+        };
+    };

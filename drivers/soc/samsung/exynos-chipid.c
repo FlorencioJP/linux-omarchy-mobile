@@ -74,6 +74,7 @@ static const struct exynos_soc_id {
 	{ "EXYNOSAUTOV920", 0x0A920000 },
 	/* Compatible with: google,gs101-otp */
 	{ "GS101", 0x9845000 },
+	{ "GS201", 0x9855000 },
 };
 
 static const char *exynos_product_id_to_name(unsigned int product_id)

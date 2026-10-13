@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/mfd/samsung,s2mpg13-pmic.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Samsung S2MPG13 Power Management IC
+
+maintainers:
+  - Derek Ross <derekross@gmail.com>
+
+description: |
+  The Samsung S2MPG13 is the sub Power Management IC paired with Google's
+  gs201 SoC, next to the S2MPG12 main PMIC. It has buck converters, 28 LDOs,
+  power meters and NTC inputs, and is reached through the ACPM firmware.
+
+  Its interrupt is a GPIO on the SoC. It is optional here: without it the
+  regulators still work, and no PMIC event is reported.
+
+properties:
+  compatible:
+    const: samsung,s2mpg13-pmic
+
+  interrupts:
+    maxItems: 1
+
+  gpio:
+    type: object
+    description:
+      The PMIC's eight general purpose pins. On the Pixel 7 boards they
+      switch the camera supplies and wake the camera PMIC.
+
+    properties:
+      compatible:
+        const: samsung,s2mpg13-gpio
+
+      gpio-controller: true
+
+      '#gpio-cells':
+        const: 2
+
+      gpio-line-names:
+        maxItems: 8
+
+    required:
+      - compatible
+      - gpio-controller
+      - '#gpio-cells'
+
+    additionalProperties: false
+
+  regulators:
+    type: object
+    $ref: /schemas/regulator/samsung,s2mpg13-regulator.yaml
+    description:
+      List of child nodes that specify the regulators.
+
+  wakeup-source: true
+
+required:
+  - compatible
+  - regulators
+
+additionalProperties: false
+
+examples:
+  - |
+    pmic {
+        compatible = "samsung,s2mpg13-pmic";
+
+        gpio {
+            compatible = "samsung,s2mpg13-gpio";
+            gpio-controller;
+            #gpio-cells = <2>;
+        };
+
+        regulators {
+            ldo9s {
+                regulator-name = "vdd_gnss_core";
+                regulator-min-microvolt = <725000>;
+                regulator-max-microvolt = <1300000>;
+            };
+        };
+    };

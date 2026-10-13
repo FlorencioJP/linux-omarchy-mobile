@@ -631,6 +631,10 @@ const __be32 *__init of_flat_dt_get_addr_size_prop(unsigned long node,
 	int len, elen = (dt_root_addr_cells + dt_root_size_cells) * sizeof(__be32);
 
 	prop = of_get_flat_dt_prop(node, name, &len);
+	if (prop && len % elen)
+		pr_warn("%s: '%s' is %d bytes, not a multiple of %d (#address-cells %d + #size-cells %d): ignored\n",
+			fdt_get_name(initial_boot_params, node, NULL), name, len, elen,
+			dt_root_addr_cells, dt_root_size_cells);
 	if (!prop || len % elen) {
 		*entries = 0;
 		return NULL;

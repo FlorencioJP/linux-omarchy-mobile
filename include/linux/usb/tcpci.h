@@ -189,6 +189,10 @@ struct tcpci;
  *		Optional; The USB Communications Capable bit indicates if port
  *		partner is capable of communication over the USB data lines
  *		(e.g. D+/- or SS Tx/Rx). Called to notify the status of the bit.
+ * @set_roles:
+ *		Optional; Called after the TCPC has been told the power and data
+ *		roles, e.g. on attach (@attached true), so that chip level
+ *		drivers can set up vendor specific data paths.
  * @check_contaminant:
  *		Optional; The callback is invoked when chiplevel drivers indicated
  *		that the USB port needs to be checked for contaminant presence.
@@ -226,6 +230,8 @@ struct tcpci_data {
 	void (*frs_sourcing_vbus)(struct tcpci *tcpci, struct tcpci_data *data);
 	void (*set_partner_usb_comm_capable)(struct tcpci *tcpci, struct tcpci_data *data,
 					     bool capable);
+	void (*set_roles)(struct tcpci *tcpci, struct tcpci_data *data, bool attached,
+			  enum typec_role role, enum typec_data_role data_role);
 	void (*check_contaminant)(struct tcpci *tcpci, struct tcpci_data *data);
 	bool (*attempt_vconn_swap_discovery)(struct tcpci *tcpci, struct tcpci_data *data);
 };

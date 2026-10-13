@@ -267,6 +267,17 @@ config VIDEO_IMX355
 	  To compile this driver as a module, choose M here: the
 	  module will be called imx355.
 
+config VIDEO_IMX386
+	tristate "Sony IMX386 sensor support"
+	depends on OF
+	select V4L2_CCI_I2C
+	help
+	  This is a Video4Linux2 sensor driver for the Sony IMX386 camera.
+	  Its initialisation and modes are loaded from a data file.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called imx386.
+
 config VIDEO_IMX412
 	tristate "Sony IMX412 sensor support"
 	depends on OF
@@ -816,6 +827,18 @@ config VIDEO_S5K6A3
 	  This is a V4L2 sensor driver for Samsung S5K6A3 raw
 	  camera sensor.
 
+config VIDEO_S5KGN1
+	tristate "Samsung S5KGN1, S5K3J1 and S5KGM5 sensor support"
+	depends on OF
+	select V4L2_CCI_I2C
+	help
+	  This is a Video4Linux2 sensor driver for the Samsung S5KGN1
+	  (ISOCELL GN1), S5K3J1 and S5KGM5 (ISOCELL GM5) cameras. Their
+	  initialisation and modes are loaded from a data file.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called s5kgn1.
+
 config VIDEO_S5KJN1
 	tristate "Samsung S5KJN1 sensor support"
 	select V4L2_CCI_I2C
@@ -948,6 +971,17 @@ config VIDEO_DW9807_VCM
 	  DW9807 is a 10 bit DAC with 100mA output current sink
 	  capability. This is designed for linear control of
 	  voice coil motors, controlled via I2C serial interface.
+
+config VIDEO_SEM1215
+	tristate "SEMCO SEM1215SA lens focus support"
+	select V4L2_CCI_I2C
+	help
+	  This is a driver for the focus part of the SEMCO (Samsung
+	  Electro-Mechanics) SEM1215SA autofocus and image stabilisation
+	  controller, as in the Google Pixel 7 Pro's telephoto camera.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called sem1215.
 
 endif
 

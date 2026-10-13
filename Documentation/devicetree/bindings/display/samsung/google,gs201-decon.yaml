@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/samsung/google,gs201-decon.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Google gs201 display controller (DECON)
+
+maintainers:
+  - Derek Ross <derekross@gmail.com>
+
+description:
+  The DECON is the display controller of the gs201 (Tensor G2) display
+  pipeline. It blends up to six windows, each fed by a DPP read DMA
+  channel, compresses the result with DSC and hands it to a DSIM. In
+  command mode a frame is sent on each tearing effect (TE) pulse of the
+  panel; register writes are double-buffered and take effect at the
+  next frame start after a shadow update request.
+
+properties:
+  compatible:
+    const: google,gs201-decon
+
+  reg:
+    items:
+      - description: DECON main registers
+      - description: DPP0 read DMA registers
+
+  reg-names:
+    items:
+      - const: main
+      - const: dma
+
+  interrupts:
+    items:
+      - description: frame start
+      - description: frame done
+      - description: extra (errors, TE edges)
+
+  interrupt-names:
+    items:
+      - const: frame_start
+      - const: frame_done
+      - const: extra
+
+  memory-region:
+    items:
+      - description: contiguous pool for scanout buffers, below 4 GiB
+      - description: the framebuffer the bootloader scans out
+
+  memory-region-names:
+    items:
+      - const: pool
+      - const: boot-framebuffer
+
+  clocks:
+    items:
+      - description: memory interface (MIF) DVFS domain
+      - description: display (DISP) DVFS domain
+
+  clock-names:
+    items:
+      - const: mif
+      - const: disp
+
+  power-domains:
+    maxItems: 1
+
+  port:
+    $ref: /schemas/graph.yaml#/properties/port
+    description:
+      Output to the DSIM, which switches the panel's refresh rate.
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - interrupts
+  - interrupt-names
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
+    display-controller@1c240000 {
+        compatible = "google,gs201-decon";
+        reg = <0x1c240000 0x6000>, <0x1c0b0000 0x1000>;
+        reg-names = "main", "dma";
+        interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>,
+                     <GIC_SPI 240 IRQ_TYPE_LEVEL_HIGH>,
+                     <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH>;
+        interrupt-names = "frame_start", "frame_done", "extra";
+
+        port {
+            decon0_out: endpoint {
+                remote-endpoint = <&dsi0_in>;
+            };
+        };
+    };
+
+...

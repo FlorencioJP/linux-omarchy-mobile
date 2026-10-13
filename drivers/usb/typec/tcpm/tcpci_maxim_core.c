@@ -292,19 +292,37 @@ static void process_tx(struct max_tcpci_chip *chip, u16 status)
 		max_tcpci_init_regs(chip);
 }
 
+static void max_tcpci_set_usb_switches(struct max_tcpci_chip *chip, bool enable)
+{
+	int ret;
+
+	ret = max_tcpci_write8(chip, TCPC_VENDOR_USBSW_CTRL, enable ?
+			       TCPC_VENDOR_USBSW_CTRL_ENABLE_USB_DATA :
+			       TCPC_VENDOR_USBSW_CTRL_DISABLE_USB_DATA);
+	if (ret < 0)
+		dev_err(chip->dev, "Failed to %s USB switches\n",
+			enable ? "enable" : "disable");
+}
+
 /* Enable USB switches when partner is USB communications capable */
 static void max_tcpci_set_partner_usb_comm_capable(struct tcpci *tcpci, struct tcpci_data *data,
 						   bool capable)
 {
-	struct max_tcpci_chip *chip = tdata_to_max_tcpci(data);
-	int ret;
+	max_tcpci_set_usb_switches(tdata_to_max_tcpci(data), capable);
+}
 
-	ret = max_tcpci_write8(chip, TCPC_VENDOR_USBSW_CTRL, capable ?
-			       TCPC_VENDOR_USBSW_CTRL_ENABLE_USB_DATA :
-			       TCPC_VENDOR_USBSW_CTRL_DISABLE_USB_DATA);
-
-	if (ret < 0)
-		dev_err(chip->dev, "Failed to enable USB switches");
+/*
+ * The chip opens its USB data switches by itself when the partner goes
+ * away, and nothing closes them again for a partner that does not speak
+ * USB PD. USB 2.0 data is part of any Type-C attach, so close them on
+ * attach; a PD partner that is not USB communications capable opens them
+ * again through set_partner_usb_comm_capable().
+ */
+static void max_tcpci_set_roles(struct tcpci *tcpci, struct tcpci_data *data, bool attached,
+				enum typec_role role, enum typec_data_role data_role)
+{
+	if (attached)
+		max_tcpci_set_usb_switches(tdata_to_max_tcpci(data), true);
 }
 
 static irqreturn_t _max_tcpci_irq(struct max_tcpci_chip *chip, u16 status)
@@ -520,6 +538,7 @@ static int max_tcpci_probe(struct i2c_client *client)
 	chip->data.auto_discharge_disconnect = true;
 	chip->data.vbus_vsafe0v = true;
 	chip->data.set_partner_usb_comm_capable = max_tcpci_set_partner_usb_comm_capable;
+	chip->data.set_roles = max_tcpci_set_roles;
 	chip->data.check_contaminant = max_tcpci_check_contaminant;
 	chip->data.cable_comm_capable = true;
 	chip->data.attempt_vconn_swap_discovery = max_tcpci_attempt_vconn_swap_discovery;

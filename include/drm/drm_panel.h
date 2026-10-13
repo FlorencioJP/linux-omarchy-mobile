@@ -139,6 +139,20 @@ struct drm_panel_funcs {
 			   struct display_timing *timings);
 
 	/**
+	 * @set_refresh_rate:
+	 *
+	 * Switch an enabled panel to another refresh rate of the same
+	 * resolution without power cycling it, for display controllers that
+	 * can change the rate seamlessly (for example DSI command mode, where
+	 * the panel paces the frames with its TE signal). The panel takes
+	 * the new rate at its next frame. The caller is responsible for the
+	 * host side of the switch.
+	 *
+	 * This function is optional.
+	 */
+	int (*set_refresh_rate)(struct drm_panel *panel, unsigned int hz);
+
+	/**
 	 * @debugfs_init:
 	 *
 	 * Allows panels to create panels-specific debugfs files.
@@ -334,6 +348,7 @@ void drm_panel_enable(struct drm_panel *panel);
 void drm_panel_disable(struct drm_panel *panel);
 
 int drm_panel_get_modes(struct drm_panel *panel, struct drm_connector *connector);
+int drm_panel_set_refresh_rate(struct drm_panel *panel, unsigned int hz);
 
 #if defined(CONFIG_OF) && defined(CONFIG_DRM_PANEL)
 struct drm_panel *of_drm_find_panel(const struct device_node *np);

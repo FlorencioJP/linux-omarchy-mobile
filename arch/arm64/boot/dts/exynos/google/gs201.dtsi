@@ -1,0 +1,1433 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Google GS201 (Tensor G2) SoC - minimal description for early bring-up.
+ */
+
+#include <dt-bindings/clock/google,gs201.h>
+#include <dt-bindings/clock/google,gs201-acpm.h>
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/soc/samsung,exynos-usi.h>
+
+/ {
+	compatible = "google,gs201";
+	#address-cells = <2>;
+	#size-cells = <1>;
+	interrupt-parent = <&gic>;
+
+	aliases {
+		pinctrl0 = &pinctrl_gpio_alive;
+		pinctrl1 = &pinctrl_far_alive;
+		pinctrl4 = &pinctrl_peric0;
+		pinctrl5 = &pinctrl_peric1;
+		pinctrl6 = &pinctrl_hsi1;
+		pinctrl7 = &pinctrl_hsi2;
+	};
+
+	/* Required by the Pixel bootloader (ABL). */
+	ect { };
+
+	/* Target of the ABL-applied debug-policy (dpm partition) overlay. */
+	dpm: dpm { };
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu-map {
+			cluster0 {
+				core0 { cpu = <&cpu0>; };
+				core1 { cpu = <&cpu1>; };
+				core2 { cpu = <&cpu2>; };
+				core3 { cpu = <&cpu3>; };
+				core4 { cpu = <&cpu4>; };
+				core5 { cpu = <&cpu5>; };
+				core6 { cpu = <&cpu6>; };
+				core7 { cpu = <&cpu7>; };
+			};
+		};
+
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x000>;
+			enable-method = "psci";
+			cpu-idle-states = <&ananke_cpu_sleep>;
+			capacity-dmips-mhz = <250>;
+		};
+		cpu1: cpu@100 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x100>;
+			enable-method = "psci";
+			cpu-idle-states = <&ananke_cpu_sleep>;
+			capacity-dmips-mhz = <250>;
+		};
+		cpu2: cpu@200 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x200>;
+			enable-method = "psci";
+			cpu-idle-states = <&ananke_cpu_sleep>;
+			capacity-dmips-mhz = <250>;
+		};
+		cpu3: cpu@300 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a55";
+			reg = <0x300>;
+			enable-method = "psci";
+			cpu-idle-states = <&ananke_cpu_sleep>;
+			capacity-dmips-mhz = <250>;
+		};
+		cpu4: cpu@400 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a78";
+			reg = <0x400>;
+			enable-method = "psci";
+			cpu-idle-states = <&hercules_cpu_sleep>;
+			capacity-dmips-mhz = <927>;
+		};
+		cpu5: cpu@500 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a78";
+			reg = <0x500>;
+			enable-method = "psci";
+			cpu-idle-states = <&hercules_cpu_sleep>;
+			capacity-dmips-mhz = <927>;
+		};
+		cpu6: cpu@600 {
+			device_type = "cpu";
+			compatible = "arm,cortex-x1";
+			reg = <0x600>;
+			enable-method = "psci";
+			cpu-idle-states = <&hera_cpu_sleep>;
+			capacity-dmips-mhz = <1024>;
+		};
+		cpu7: cpu@700 {
+			device_type = "cpu";
+			compatible = "arm,cortex-x1";
+			reg = <0x700>;
+			enable-method = "psci";
+			cpu-idle-states = <&hera_cpu_sleep>;
+			capacity-dmips-mhz = <1024>;
+		};
+		/*
+		 * C2: core power-down through PSCI CPU_SUSPEND, with latencies
+		 * from Google's gs201 device tree. The exynos-pmu driver writes
+		 * the CPU_INFORM hint and the PMU interrupt-generator wake-up
+		 * bits that the firmware expects on every entry. The per-core
+		 * generic timer stops in C2, so this needs the MCT as broadcast
+		 * timer.
+		 */
+		idle-states {
+			entry-method = "psci";
+
+			ananke_cpu_sleep: cpu-ananke-sleep {
+				compatible = "arm,idle-state";
+				idle-state-name = "c2";
+				arm,psci-suspend-param = <0x0010000>;
+				local-timer-stop;
+				entry-latency-us = <70>;
+				exit-latency-us = <160>;
+				min-residency-us = <2000>;
+			};
+
+			hercules_cpu_sleep: cpu-hercules-sleep {
+				compatible = "arm,idle-state";
+				idle-state-name = "c2";
+				arm,psci-suspend-param = <0x0010000>;
+				local-timer-stop;
+				entry-latency-us = <150>;
+				exit-latency-us = <190>;
+				min-residency-us = <2500>;
+			};
+
+			hera_cpu_sleep: cpu-hera-sleep {
+				compatible = "arm,idle-state";
+				idle-state-name = "c2";
+				arm,psci-suspend-param = <0x0010000>;
+				local-timer-stop;
+				entry-latency-us = <235>;
+				exit-latency-us = <220>;
+				min-residency-us = <3500>;
+			};
+		};
+	};
+
+	psci {
+		compatible = "arm,psci-1.0";
+		method = "smc";
+	};
+
+	timer {
+		compatible = "arm,armv8-timer";
+		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>;
+	};
+
+	oscclk: clock-oscclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24576000>;
+		clock-output-names = "oscclk";
+	};
+
+	/*
+	 * Bring-up placeholder: HSI0 clocks are left running by ABL (it does
+	 * USB fastboot). Replace with cmu_hsi0 once clk-gs201 exists.
+	 */
+	usb_ref_clk: clock-usb-ref {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <19200000>;	/* Google: phy_ref_clock */
+		clock-output-names = "usb20-ref";
+	};
+
+	/*
+	 * Bring-up placeholder for the CMU_APM gate of the AP-APM mailbox
+	 * (GOUT_BLK_APM_UID_MAILBOX_APM_AP_IPCLKPORT_PCLK, CMU_APM + 0x20d4).
+	 * Google's ACPM driver never touches it: the gate runs under automatic
+	 * clock gating (Q-channel MAILBOX_APM_AP_QCH). Replace with cmu_apm once
+	 * there is a driver for it. The rate is not used.
+	 */
+	apm_mbox_pclk: clock-apm-mbox-pclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24576000>;
+		clock-output-names = "apm-mbox-pclk";
+	};
+
+	firmware {
+		acpm_ipc: power-management {
+			compatible = "google,gs201-acpm-ipc";
+			#clock-cells = <1>;
+			mboxes = <&ap2apm_mailbox>;
+			shmem = <&apm_sram>;
+		};
+	};
+
+	/*
+	 * GPU operating points, as shader (G3D) rates: the ACPM "gpu" clock
+	 * moves the top/L2 domain (G3DL2) to the level paired with each one.
+	 * 202-848 MHz are Google's gs201 GPU table (gpu_dvfs_table_v1);
+	 * 151 MHz is the ECT boot and resume level of both domains. No
+	 * opp-microvolt: ACPM sets the rail voltages from the fused ASV tables.
+	 */
+	gpu_opp_table: opp-table-gpu {
+		compatible = "operating-points-v2";
+
+		opp-151000000 {
+			opp-hz = /bits/ 64 <151000000>;
+		};
+
+		opp-202000000 {
+			opp-hz = /bits/ 64 <202000000>;
+		};
+
+		opp-251000000 {
+			opp-hz = /bits/ 64 <251000000>;
+		};
+
+		opp-302000000 {
+			opp-hz = /bits/ 64 <302000000>;
+		};
+
+		opp-351000000 {
+			opp-hz = /bits/ 64 <351000000>;
+		};
+
+		opp-400000000 {
+			opp-hz = /bits/ 64 <400000000>;
+		};
+
+		opp-471000000 {
+			opp-hz = /bits/ 64 <471000000>;
+		};
+
+		opp-510000000 {
+			opp-hz = /bits/ 64 <510000000>;
+		};
+
+		opp-572000000 {
+			opp-hz = /bits/ 64 <572000000>;
+		};
+
+		opp-701000000 {
+			opp-hz = /bits/ 64 <701000000>;
+		};
+
+		opp-762000000 {
+			opp-hz = /bits/ 64 <762000000>;
+		};
+
+		opp-848000000 {
+			opp-hz = /bits/ 64 <848000000>;
+		};
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges;
+
+		/*
+		 * Regions the stock firmware and Android keep out of the kernel's
+		 * hands. seclog is written by the secure world while Linux runs;
+		 * the modem and AoC regions are DMA targets once those cores run;
+		 * ect holds the bootloader's clock tables. Left as System RAM they
+		 * can be handed out and overwritten under us.
+		 */
+		ect@90000000 { reg = <0x0 0x90000000 0x3a000>; no-map; };
+		gsa@90200000 { reg = <0x0 0x90200000 0x400000>; no-map; };
+		tpu-ctx@91e00000 { reg = <0x0 0x91e00000 0x1200000>; no-map; };
+		tpu-fw@93000000 { reg = <0x0 0x93000000 0x1000000>; no-map; };
+		aoc@94000000 { reg = <0x0 0x94000000 0x3000000>; no-map; };
+		xhci-dma@97000000 { reg = <0x0 0x97000000 0x400000>; no-map; };
+		gxp@98000000 { reg = <0x0 0x98000000 0x500000>; no-map; };
+		seclog@c3000000 { reg = <0x0 0xc3000000 0x80000>; no-map; };
+		dss@d8100000 { reg = <0x0 0xd8100000 0x5f20000>; no-map; };
+		cp-rmem1@e8000000 { reg = <0x0 0xe8000000 0x2000000>; no-map; };
+		cp-rmem@ea400000 { reg = <0x0 0xea400000 0x800000>; no-map; };
+		/* The modem's MSI target (stock cp_msi_rmem) */
+		cp_msi_mem: cp-msi@f6200000 { reg = <0x0 0xf6200000 0x1000>; no-map; };
+		abl@f8800000 { reg = <0x0 0xf8800000 0x2000000>; no-map; };
+		debug@fd3f0000 { reg = <0x0 0xfd3f0000 0x10000>; no-map; };
+		bldr-log@fd800000 { reg = <0x0 0xfd800000 0x100000>; no-map; };
+		suspend-diag@fd90c000 { reg = <0x0 0xfd90c000 0x1000>; no-map; };
+	};
+
+	/* Label stubs so the ABL "dpm" overlay applies (it only sets status). */
+	dpm-stubs {
+		log_arrdumppanic: log-arrdumppanic { status = "disabled"; };
+		log_preslcdump: log-preslcdump { status = "disabled"; };
+		log_slcdump: log-slcdump { status = "disabled"; };
+	};
+
+	/*
+	 * Trusty, the secure OS that runs from the bootloader's tzsw image.
+	 * Disabled until the fingerprint bring-up gates (it talks to the
+	 * secure world at probe).
+	 */
+	trusty: trusty {
+		compatible = "android,trusty-smc-v1";
+		status = "disabled";
+
+		irq {
+			compatible = "android,trusty-irq-v1";
+			/* Trusty IPIs 8-15 are GIC SGIs 8-15 */
+			ipi-range = <8 15 8>;
+		};
+
+		log {
+			compatible = "android,trusty-log-v1";
+		};
+
+		virtio {
+			compatible = "android,trusty-virtio-v1";
+		};
+	};
+
+	soc: soc@0 {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		/* Registers below 1 GiB, PCIe windows at 0x40000000-0x7fffffff */
+		ranges = <0x0 0x0 0x0 0x80000000>;
+
+		/*
+		 * Clock controllers. Consumers below still use the fixed-clock
+		 * placeholders (and we boot with clk_ignore_unused); switch them
+		 * one at a time:
+		 *   MCT:            <&cmu_misc CLK_GOUT_MISC_MCT_PCLK>
+		 *   usbdrd31_phy:   CLK_GOUT_HSI0_USB31DRD_ACLK_PHYCTRL ("phy"),
+		 *                   CLK_GOUT_HSI0_USB31DRD_I_USB20_PHY_REFCLK_26 ("ref"),
+		 *                   CLK_GOUT_HSI0_UASC_HSI0_CTRL_{ACLK,PCLK},
+		 *                   CLK_GOUT_HSI0_USB31DRD_I_USBDPPHY_SCL_APB_PCLK
+		 *   usb (dwc3):     CLK_GOUT_HSI0_USB31DRD_BUS_CLK_EARLY,
+		 *                   CLK_GOUT_HSI0_USB31DRD_I_USB31DRD_SUSPEND_CLK_26,
+		 *                   CLK_GOUT_HSI0_UASC_HSI0_LINK_{ACLK,PCLK},
+		 *                   CLK_GOUT_HSI0_USB31DRD_I_USB31DRD_REF_CLK_40
+		 */
+		cmu_misc: clock-controller@10010000 {
+			compatible = "google,gs201-cmu-misc";
+			reg = <0x10010000 0x10000>;
+			#clock-cells = <1>;
+			clocks = <&cmu_top CLK_DOUT_CMU_MISC_NOC>,
+				 <&cmu_top CLK_DOUT_CMU_MISC_SSS>;
+			clock-names = "bus", "sss";
+		};
+
+		cmu_peric0: clock-controller@10800000 {
+			compatible = "google,gs201-cmu-peric0";
+			reg = <0x10800000 0x10000>;
+			#clock-cells = <1>;
+			clocks = <&oscclk>,
+				 <&cmu_top CLK_DOUT_CMU_PERIC0_NOC>,
+				 <&cmu_top CLK_DOUT_CMU_PERIC0_IP>;
+			clock-names = "oscclk", "bus", "ip";
+		};
+
+		sysreg_peric0: syscon@10820000 {
+			compatible = "google,gs201-peric0-sysreg", "syscon";
+			reg = <0x10820000 0x10000>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_SYSREG_PERIC0_PCLK>;
+		};
+
+		/*
+		 * Off by default: only Bluetooth (BT_REG_ON, BT_DEV_WAKE on gpp16)
+		 * and the haptics I2C bus (gpp16-0/1) use it so far, and both are
+		 * still at bring-up.
+		 */
+		pinctrl_peric0: pinctrl@10840000 {
+			compatible = "google,gs201-pinctrl";
+			reg = <0x10840000 0x1000>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_GPIO_PERIC0_PCLK>;
+			clock-names = "pclk";
+			interrupts = <GIC_SPI 664 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
+		};
+
+		usi1: usi@109000c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x109000c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI1_USI_PCLK>,
+				 <&cmu_peric0 CLK_GOUT_PERIC0_USI1_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric0 0x1000>;
+			status = "disabled";
+
+			hsi2c_1: i2c@10900000 {
+				compatible = "google,gs201-hsi2c",
+					     "samsung,exynosautov9-hsi2c";
+				reg = <0x10900000 0xc0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI1_USI_IPCLK>,
+					 <&cmu_peric0 CLK_GOUT_PERIC0_USI1_USI_PCLK>;
+				clock-names = "hsi2c", "hsi2c_pclk";
+				interrupts = <GIC_SPI 674 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&hsi2c1_bus>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		usi2: usi@109100c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x109100c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI2_USI_PCLK>,
+				 <&cmu_peric0 CLK_GOUT_PERIC0_USI2_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric0 0x1004>;
+			status = "disabled";
+
+			hsi2c_2: i2c@10910000 {
+				compatible = "google,gs201-hsi2c",
+					     "samsung,exynosautov9-hsi2c";
+				reg = <0x10910000 0xc0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI2_USI_IPCLK>,
+					 <&cmu_peric0 CLK_GOUT_PERIC0_USI2_USI_PCLK>;
+				clock-names = "hsi2c", "hsi2c_pclk";
+				interrupts = <GIC_SPI 675 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&hsi2c2_bus>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		usi3: usi@109200c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x109200c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI3_USI_PCLK>,
+				 <&cmu_peric0 CLK_GOUT_PERIC0_USI3_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric0 0x1008>;
+			status = "disabled";
+
+			hsi2c_3: i2c@10920000 {
+				compatible = "google,gs201-hsi2c",
+					     "samsung,exynosautov9-hsi2c";
+				reg = <0x10920000 0xc0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI3_USI_IPCLK>,
+					 <&cmu_peric0 CLK_GOUT_PERIC0_USI3_USI_PCLK>;
+				clock-names = "hsi2c", "hsi2c_pclk";
+				interrupts = <GIC_SPI 676 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&hsi2c3_bus>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		usi4: usi@109300c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x109300c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI4_USI_PCLK>,
+				 <&cmu_peric0 CLK_GOUT_PERIC0_USI4_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric0 0x100c>;
+			status = "disabled";
+
+			hsi2c_4: i2c@10930000 {
+				compatible = "google,gs201-hsi2c",
+					     "samsung,exynosautov9-hsi2c";
+				reg = <0x10930000 0xc0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI4_USI_IPCLK>,
+					 <&cmu_peric0 CLK_GOUT_PERIC0_USI4_USI_PCLK>;
+				clock-names = "hsi2c", "hsi2c_pclk";
+				interrupts = <GIC_SPI 677 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&hsi2c4_bus>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		usi5: usi@109400c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x109400c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI5_USI_PCLK>,
+				 <&cmu_peric0 CLK_GOUT_PERIC0_USI5_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric0 0x1010>;
+			status = "disabled";
+
+			spi_5: spi@10940000 {
+				compatible = "google,gs201-spi", "google,gs101-spi";
+				reg = <0x10940000 0x30>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI5_USI_PCLK>,
+					 <&cmu_peric0 CLK_GOUT_PERIC0_USI5_USI_IPCLK>;
+				clock-names = "spi", "spi_busclk0";
+				interrupts = <GIC_SPI 678 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&spi5_bus>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		usi7: usi@109600c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x109600c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI7_USI_PCLK>,
+				 <&cmu_peric0 CLK_GOUT_PERIC0_USI7_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric0 0x1018>;
+			status = "disabled";
+
+			spi_7: spi@10960000 {
+				compatible = "google,gs201-spi", "google,gs101-spi";
+				reg = <0x10960000 0x30>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI7_USI_PCLK>,
+					 <&cmu_peric0 CLK_GOUT_PERIC0_USI7_USI_IPCLK>;
+				clock-names = "spi", "spi_busclk0";
+				interrupts = <GIC_SPI 680 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&spi7_bus &spi7_miso>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		usi8: usi@109700c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x109700c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI8_USI_PCLK>,
+				 <&cmu_peric0 CLK_GOUT_PERIC0_USI8_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric0 0x101c>;
+			status = "disabled";
+
+			hsi2c_8: i2c@10970000 {
+				compatible = "google,gs201-hsi2c",
+					     "samsung,exynosautov9-hsi2c";
+				reg = <0x10970000 0xc0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI8_USI_IPCLK>,
+					 <&cmu_peric0 CLK_GOUT_PERIC0_USI8_USI_PCLK>;
+				clock-names = "hsi2c", "hsi2c_pclk";
+				interrupts = <GIC_SPI 681 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&hsi2c8_bus>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		cmu_peric1: clock-controller@10c00000 {
+			compatible = "google,gs201-cmu-peric1";
+			reg = <0x10c00000 0x10000>;
+			#clock-cells = <1>;
+			clocks = <&oscclk>,
+				 <&cmu_top CLK_DOUT_CMU_PERIC1_NOC>,
+				 <&cmu_top CLK_DOUT_CMU_PERIC1_IP>;
+			clock-names = "oscclk", "bus", "ip";
+		};
+
+		sysreg_peric1: syscon@10c20000 {
+			compatible = "google,gs201-peric1-sysreg", "syscon";
+			reg = <0x10c20000 0x10000>;
+			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_SYSREG_PERIC1_PCLK>;
+		};
+
+		pinctrl_peric1: pinctrl@10c40000 {
+			compatible = "google,gs201-pinctrl";
+			reg = <0x10c40000 0x1000>;
+			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_GPIO_PERIC1_PCLK>;
+			clock-names = "pclk";
+			interrupts = <GIC_SPI 683 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		usi0: usi@10d100c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x10d100c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI0_USI_PCLK>,
+				 <&cmu_peric1 CLK_GOUT_PERIC1_USI0_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric1 0x1000>;
+			status = "disabled";
+
+			spi_0: spi@10d10000 {
+				compatible = "google,gs201-spi", "google,gs101-spi";
+				reg = <0x10d10000 0x30>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI0_USI_PCLK>,
+					 <&cmu_peric1 CLK_GOUT_PERIC1_USI0_USI_IPCLK>;
+				clock-names = "spi", "spi_busclk0";
+				interrupts = <GIC_SPI 690 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&spi0_bus &spi0_miso>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		usi13: usi@10d600c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x10d600c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI13_USI_PCLK>,
+				 <&cmu_peric1 CLK_GOUT_PERIC1_USI13_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric1 0x1014>;
+			status = "disabled";
+
+			hsi2c_13: i2c@10d60000 {
+				compatible = "google,gs201-hsi2c",
+					     "samsung,exynosautov9-hsi2c";
+				reg = <0x10d60000 0xc0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI13_USI_IPCLK>,
+					 <&cmu_peric1 CLK_GOUT_PERIC1_USI13_USI_PCLK>;
+				clock-names = "hsi2c", "hsi2c_pclk";
+				interrupts = <GIC_SPI 695 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&hsi2c13_bus>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		usi15: usi@10da00c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x10da00c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI15_USI_PCLK>,
+				 <&cmu_peric1 CLK_GOUT_PERIC1_USI15_USI_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_peric1 0x1018>;
+			status = "disabled";
+
+			hsi2c_15: i2c@10da0000 {
+				compatible = "google,gs201-hsi2c",
+					     "samsung,exynosautov9-hsi2c";
+				reg = <0x10da0000 0xc0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI15_USI_IPCLK>,
+					 <&cmu_peric1 CLK_GOUT_PERIC1_USI15_USI_PCLK>;
+				clock-names = "hsi2c", "hsi2c_pclk";
+				interrupts = <GIC_SPI 696 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&hsi2c15_bus>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+		};
+
+		cmu_hsi0: clock-controller@11000000 {
+			compatible = "google,gs201-cmu-hsi0";
+			reg = <0x11000000 0x10000>;
+			#clock-cells = <1>;
+			clocks = <&oscclk>,
+				 <&cmu_top CLK_DOUT_CMU_HSI0_NOC>,
+				 <&cmu_top CLK_DOUT_CMU_HSI0_DPGTC>,
+				 <&cmu_top CLK_DOUT_CMU_HSI0_USB31DRD>,
+				 <&cmu_top CLK_DOUT_CMU_HSI0_USBDPDBG>;
+			clock-names = "oscclk", "bus", "dpgtc", "usb31drd",
+				      "usbdpdbg";
+		};
+
+		cmu_hsi2: clock-controller@14400000 {
+			compatible = "google,gs201-cmu-hsi2";
+			reg = <0x14400000 0x10000>;
+			#clock-cells = <1>;
+			clocks = <&oscclk>,
+				 <&cmu_top CLK_DOUT_CMU_HSI2_NOC>,
+				 <&cmu_top CLK_DOUT_CMU_HSI2_PCIE>,
+				 <&cmu_top CLK_DOUT_CMU_HSI2_UFS_EMBD>,
+				 <&cmu_top CLK_DOUT_CMU_HSI2_MMC_CARD>;
+			clock-names = "oscclk", "bus", "pcie", "ufs", "mmc";
+		};
+
+		/*
+		 * The display CMUs are left disabled until a display driver
+		 * needs them: the bootloader keeps their power domains (pd_dpu,
+		 * pd_disp) on, and registering them switches the CMUs to
+		 * automatic clock gating under a running scanout.
+		 */
+		cmu_dpu: clock-controller@1c000000 {
+			compatible = "google,gs201-cmu-dpu";
+			reg = <0x1c000000 0x10000>;
+			#clock-cells = <1>;
+			clocks = <&oscclk>, <&cmu_top CLK_DOUT_CMU_DPU_NOC>;
+			clock-names = "oscclk", "bus";
+			status = "disabled";
+		};
+
+		cmu_disp: clock-controller@1c200000 {
+			compatible = "google,gs201-cmu-disp";
+			reg = <0x1c200000 0x10000>;
+			#clock-cells = <1>;
+			clocks = <&oscclk>, <&cmu_top CLK_DOUT_CMU_DISP_NOC>;
+			clock-names = "oscclk", "bus";
+			status = "disabled";
+		};
+
+		/* Camera block (CSIS): routing system registers [Google GPL DT] */
+		sysreg_csis: syscon@1a420000 {
+			compatible = "google,gs201-csis-sysreg", "syscon";
+			reg = <0x1a420000 0x10000>;
+		};
+
+		/*
+		 * CSIS links 0 and 1: four D-PHY lanes or three C-PHY trios
+		 * each. Every link feeds CSIS WDMA context 0 with the EBUF
+		 * bypassed, as link 2 does, so they stream one at a time.
+		 */
+		csis0: csis@1a440000 {
+			compatible = "google,gs201-csis";
+			reg = <0x1a440000 0x1000>, <0x1a4d0000 0x1000>,
+			      <0x1a4d7000 0x1000>, <0x1a4c0000 0x100>;
+			reg-names = "link", "dma", "wdma", "ebuf";
+			interrupts = <GIC_SPI 189 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "link", "wdma";
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_CAM>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_INT>;
+			clock-names = "cam", "int";
+			phys = <&csis_dcphy 0>;
+			google,csis-link = <0>;
+			google,wdma-context = <0>;
+			google,csis-sysreg = <&sysreg_csis>;
+			status = "disabled";
+
+			port {
+				csis0_in: endpoint {
+				};
+			};
+		};
+
+		csis1: csis@1a450000 {
+			compatible = "google,gs201-csis";
+			reg = <0x1a450000 0x1000>, <0x1a4d0000 0x1000>,
+			      <0x1a4d7000 0x1000>, <0x1a4c0000 0x100>;
+			reg-names = "link", "dma", "wdma", "ebuf";
+			interrupts = <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "link", "wdma";
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_CAM>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_INT>;
+			clock-names = "cam", "int";
+			phys = <&csis_dcphy 1>;
+			google,csis-link = <1>;
+			google,wdma-context = <0>;
+			google,csis-sysreg = <&sysreg_csis>;
+			status = "disabled";
+
+			port {
+				csis1_in: endpoint {
+				};
+			};
+		};
+
+		/*
+		 * CSIS link 2, two lanes of its own or four with link 3's
+		 * (DC-PHY slaves 2 and 3 as one receiver), feeding CSIS WDMA
+		 * context 0 with the EBUF bypassed.
+		 */
+		csis2: csis@1a460000 {
+			compatible = "google,gs201-csis";
+			reg = <0x1a460000 0x1000>, <0x1a4d0000 0x1000>,
+			      <0x1a4d7000 0x1000>, <0x1a4c0000 0x100>;
+			reg-names = "link", "dma", "wdma", "ebuf";
+			interrupts = <GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "link", "wdma";
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_CAM>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_INT>;
+			clock-names = "cam", "int";
+			phys = <&csis_dcphy 2>;
+			google,csis-link = <2>;
+			google,wdma-context = <0>;
+			google,csis-sysreg = <&sysreg_csis>;
+			status = "disabled";
+
+			port {
+				csis2_in: endpoint {
+				};
+			};
+		};
+
+		/*
+		 * CSIS link 4, two lanes or C-PHY trios of its own (four D-PHY
+		 * lanes with link 5's), feeding CSIS WDMA context 0 with the
+		 * EBUF bypassed, as the other links.
+		 */
+		csis4: csis@1a480000 {
+			compatible = "google,gs201-csis";
+			reg = <0x1a480000 0x1000>, <0x1a4d0000 0x1000>,
+			      <0x1a4d7000 0x1000>, <0x1a4c0000 0x100>;
+			reg-names = "link", "dma", "wdma", "ebuf";
+			interrupts = <GIC_SPI 193 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "link", "wdma";
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_CAM>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_INT>;
+			clock-names = "cam", "int";
+			phys = <&csis_dcphy 4>;
+			google,csis-link = <4>;
+			google,wdma-context = <0>;
+			google,csis-sysreg = <&sysreg_csis>;
+			status = "disabled";
+
+			port {
+				csis4_in: endpoint {
+				};
+			};
+		};
+
+		csis_dcphy: phy@1a4f0000 {
+			compatible = "google,gs201-mipi-dcphy-rx";
+			reg = <0x1a4f0000 0x4000>;
+			#phy-cells = <1>;
+			samsung,pmu-syscon = <&pmu_system_controller 0x3ebc>;
+			google,reset-sysreg = <&sysreg_csis 0x500>;
+			status = "disabled";
+		};
+
+		cmu_top: clock-controller@1e080000 {
+			compatible = "google,gs201-cmu-top";
+			reg = <0x1e080000 0x10000>;
+			#clock-cells = <1>;
+			clocks = <&oscclk>;
+			clock-names = "oscclk";
+		};
+
+		gic: interrupt-controller@10400000 {
+			compatible = "arm,gic-v3";
+			#interrupt-cells = <3>;
+			#address-cells = <0>;
+			interrupt-controller;
+			reg = <0x10400000 0x10000>,	/* GICD */
+			      <0x10440000 0x100000>;	/* GICR x8 */
+			interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		usbdrd31_phy: phy@11200000 {
+			compatible = "google,gs201-usb31drd-phy";
+			reg = <0x11200000 0x200>,
+			      <0x11100000 0x800>,
+			      <0x110f0000 0x2800>;
+			reg-names = "phy", "pcs", "pma";
+			clocks = <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_ACLK_PHYCTRL>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_I_USB20_PHY_REFCLK_26>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_UASC_HSI0_CTRL_ACLK>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_UASC_HSI0_CTRL_PCLK>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_I_USBDPPHY_SCL_APB_PCLK>;
+			clock-names = "phy", "ref", "ctrl_aclk", "ctrl_pclk",
+				      "scl_pclk";
+			samsung,pmu-syscon = <&pmu_system_controller>;
+			#phy-cells = <1>;
+			status = "disabled";
+		};
+
+		usb_dwc3: usb@11210000 {
+			compatible = "snps,dwc3";
+			reg = <0x11210000 0x10000>;
+			interrupts = <GIC_SPI 379 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_I_USB31DRD_REF_CLK_40>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_BUS_CLK_EARLY>,
+				 <&cmu_hsi0 CLK_GOUT_HSI0_USB31DRD_I_USB31DRD_SUSPEND_CLK_26>;
+			clock-names = "ref", "bus_early", "suspend";
+			phys = <&usbdrd31_phy 0>;
+			phy-names = "usb2-phy";
+			dr_mode = "peripheral";
+			maximum-speed = "high-speed";
+			snps,dis_u2_susphy_quirk;
+			snps,dis_u3_susphy_quirk;
+			snps,has-lpm-erratum;
+			status = "disabled";
+		};
+
+		/*
+		 * HSI1 pins: the modem's PCIe GEN4A_0 (CLKREQ#, PERST#), its control
+		 * lines and the NFC controller's reset and power-idle lines.
+		 */
+		pinctrl_hsi1: pinctrl@11840000 {
+			compatible = "google,gs201-pinctrl";
+			reg = <0x11840000 0x1000>;
+			/* TODO: update once support for this CMU exists */
+			clocks = <0>;
+			clock-names = "pclk";
+			interrupts = <GIC_SPI 387 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
+		};
+
+		/* No CMU_HSI1 driver yet: the bus clock is not described. */
+		sysreg_hsi1: syscon@11820000 {
+			compatible = "google,gs201-hsi1-sysreg", "syscon";
+			reg = <0x11820000 0x1000>;
+		};
+
+		/*
+		 * PCIe GEN4A_0 in HSI1, the link to the S5300 modem (Google's
+		 * pcie_0, ch-num 0). Two lanes; the outbound iATU belongs to the
+		 * secure monitor. Bring-up driver only (pcie-gs201-cp).
+		 */
+		pcie_0: pcie@11920000 {
+			compatible = "google,gs201-pcie-cp";
+			reg = <0x11920000 0x1400>,
+			      <0x11c00000 0x301000>,
+			      <0x40ffe000 0x2000>,
+			      <0x11900000 0x1000>;
+			reg-names = "elbi", "dbi", "config", "ia";
+			#address-cells = <3>;
+			#size-cells = <2>;
+			device_type = "pci";
+			/* PCI 0x14e00000 = CPU 0x40000000, set up by the secure monitor */
+			ranges = <0x82000000 0x0 0x14e00000 0x40000000 0x0 0xff0000>;
+			bus-range = <0x00 0xff>;
+			interrupts = <GIC_SPI 388 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 389 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 390 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 391 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 392 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 393 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "ctrl", "msi0", "msi1", "msi2", "msi3", "msi4";
+			phys = <&pcie_0_phy>;
+			phy-names = "pcie";
+			memory-region = <&cp_msi_mem>;
+			pinctrl-0 = <&pcie0_clkreq>, <&pcie0_perst>;
+			pinctrl-names = "active";
+			reset-gpios = <&gph0 0 GPIO_ACTIVE_LOW>;
+			samsung,pmu-syscon = <&pmu_system_controller 0x3ec0>;
+			samsung,sysreg = <&sysreg_hsi1 0x704>;
+			num-lanes = <2>;
+			max-link-speed = <3>;
+			status = "disabled";
+		};
+
+		pcie_0_phy: phy@11950000 {
+			compatible = "google,gs201-pcie-phy";
+			reg = <0x11950000 0x2000>,
+			      <0x11940000 0x1000>,
+			      <0x11921400 0x10>,
+			      <0x11960000 0xd000>;
+			reg-names = "pma", "pcs", "rst", "udbg";
+			samsung,pmu-syscon = <&pmu_system_controller 0x3ec0>;
+			#phy-cells = <0>;
+			status = "disabled";
+		};
+
+		sysreg_hsi2: syscon@14420000 {
+			compatible = "google,gs201-hsi2-sysreg", "syscon";
+			reg = <0x14420000 0x10000>;
+			clocks = <&cmu_hsi2 CLK_GOUT_HSI2_SYSREG_HSI2_PCLK>;
+		};
+
+		pinctrl_hsi2: pinctrl@14440000 {
+			compatible = "google,gs201-pinctrl";
+			reg = <0x14440000 0x1000>;
+			clocks = <&cmu_hsi2 CLK_GOUT_HSI2_GPIO_HSI2_PCLK>;
+			clock-names = "pclk";
+			interrupts = <GIC_SPI 421 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		/*
+		 * PCIe GEN4A_1 in HSI2, the Wi-Fi controller on Pixel 7. Google's
+		 * tree calls it pcie_1 (ch-num 1); the modem's GEN4A_0 in HSI1 is
+		 * not described.
+		 *
+		 * Off by default: until the HSI2 S2MPU (DMA firewall) is
+		 * programmed, a device on this link can DMA anywhere in RAM.
+		 */
+		pcie_1: pcie@14520000 {
+			compatible = "google,gs201-pcie";
+			reg = <0x14520000 0x1400>,
+			      <0x14800000 0x301000>,
+			      <0x60ffe000 0x2000>,
+			      <0x14500000 0x1000>;
+			reg-names = "elbi", "dbi", "config", "ia";
+			#address-cells = <3>;
+			#size-cells = <2>;
+			device_type = "pci";
+			ranges = <0x82000000 0x0 0x60000000 0x60000000 0x0 0xff0000>;
+			bus-range = <0x00 0xff>;
+			interrupts = <GIC_SPI 428 IRQ_TYPE_LEVEL_HIGH>;
+			#interrupt-cells = <1>;
+			interrupt-map-mask = <0 0 0 7>;
+			interrupt-map = <0 0 0 1 &pcie_1_intc 1>,
+					<0 0 0 2 &pcie_1_intc 2>,
+					<0 0 0 3 &pcie_1_intc 3>,
+					<0 0 0 4 &pcie_1_intc 4>;
+			clocks = <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_DBI_ACLK_UG>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_MSTR_ACLK_UG>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_G4X2_DWC_PCIE_CTL_INST_0_SLV_ACLK_UG>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_PCIE_SUB_CTRL_INST_0_I_DRIVER_APB_CLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_IA_GEN4A_1_I_CLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_QE_PCIE_GEN4A_HSI2_ACLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_QE_PCIE_GEN4A_HSI2_PCLK>;
+			phys = <&pcie_1_phy>;
+			phy-names = "pcie";
+			pinctrl-0 = <&pcie1_clkreq>, <&pcie1_perst>;
+			pinctrl-names = "default";
+			reset-gpios = <&gph2 0 GPIO_ACTIVE_LOW>;
+			samsung,cmu = <&cmu_hsi2>;
+			samsung,sysreg = <&sysreg_hsi2 0x730>;
+			dma-coherent;
+			num-lanes = <1>;
+			max-link-speed = <2>;
+			status = "disabled";
+
+			pcie_1_intc: legacy-interrupt-controller {
+				#address-cells = <0>;
+				interrupt-controller;
+				#interrupt-cells = <1>;
+			};
+		};
+
+		/* PCIe GEN4A_1 System MMU, used as a DMA window (W4) */
+		pcie_1_sysmmu: sysmmu@145c0000 {
+			compatible = "google,gs201-pcie-sysmmu";
+			reg = <0x145c0000 0x10000>;
+			interrupts = <GIC_SPI 446 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&cmu_hsi2 CLK_GOUT_HSI2_SYSMMU_HSI2_CLK_S1>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_SYSMMU_HSI2_CLK_S2>;
+			google,vid = <1>;
+			status = "disabled";
+		};
+
+		pcie_1_phy: phy@14550000 {
+			compatible = "google,gs201-pcie-phy";
+			reg = <0x14550000 0x2000>,
+			      <0x14540000 0x1000>,
+			      <0x14521400 0x10>,
+			      <0x14560000 0xd000>;
+			reg-names = "pma", "pcs", "rst", "udbg";
+			clocks = <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCIE_003_PCIE_SUB_CTRL_INST_0_PHY_REFCLK_IN>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCS_PMA_INST_0_PHY_UDBG_I_APB_PCLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCS_PMA_INST_0_PIPE_PAL_PCIE_INST_0_I_APB_PCLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_PCIE_GEN4_1_PCS_PMA_INST_0_SF_PCIEPHY210X2_LN05LPE_QCH_TM_WRAPPER_INST_0_I_APB_PCLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_AS_APB_PCIEPHY_HSI2_PCLKM>;
+			samsung,pmu-syscon = <&pmu_system_controller 0x3ec4>;
+			#phy-cells = <0>;
+			status = "disabled";
+		};
+
+		/*
+		 * No gs201 pinctrl driver yet: the UFS reset (gph3-1) and
+		 * reference clock output (gph3-0) pins on the HSI2UFS pin
+		 * controller are left in their UFS function by the bootloader.
+		 */
+		ufs_0: ufs@14700000 {
+			compatible = "google,gs201-ufs";
+			reg = <0x14700000 0x200>,
+			      <0x14701100 0x200>,
+			      <0x14780000 0xa000>,
+			      <0x14600000 0x100>;
+			reg-names = "hci", "vs_hci", "unipro", "ufsp";
+			interrupts = <GIC_SPI 453 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&cmu_hsi2 CLK_GOUT_HSI2_UFS_EMBD_I_ACLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_UFS_EMBD_I_CLK_UNIPRO>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_UFS_EMBD_I_FMP_CLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_QE_UFS_EMBD_HSI2_ACLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_QE_UFS_EMBD_HSI2_PCLK>,
+				 <&cmu_hsi2 CLK_GOUT_HSI2_SYSREG_HSI2_PCLK>;
+			clock-names = "core_clk", "sclk_unipro_main", "fmp",
+				      "aclk", "pclk", "sysreg";
+			dma-coherent;
+			freq-table-hz = <0 0>, <0 0>, <0 0>, <0 0>, <0 0>, <0 0>;
+			phys = <&ufs_0_phy>;
+			phy-names = "ufs-phy";
+			samsung,sysreg = <&sysreg_hsi2 0x710>;
+			status = "disabled";
+		};
+
+		ufs_0_phy: phy@14704000 {
+			compatible = "google,gs201-ufs-phy";
+			reg = <0x14704000 0x3000>;
+			reg-names = "phy-pma";
+			samsung,pmu-syscon = <&pmu_system_controller>;
+			#phy-cells = <0>;
+			clocks = <&oscclk>;
+			clock-names = "ref_clk";
+			status = "disabled";
+		};
+
+		gsa: gsa@17c90000 {
+			compatible = "google,gs201-gsa";
+			reg = <0x17c90000 0x1000>, <0x17c60000 0x10000>;
+			reg-names = "mbox", "s2mpu";
+			interrupts = <GIC_SPI 363 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
+		};
+
+		aoc_sysmmu: sysmmu@1a090000 {
+			compatible = "google,gs201-aoc-sysmmu";
+			reg = <0x1a090000 0x10000>;
+			interrupts = <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
+		};
+
+		aoc: aoc@181d0000 {
+			compatible = "google,gs201-aoc";
+			reg = <0x181d0000 0x1000>, <0x1a0b0000 0x1000>,
+			      <0x10000000 0x100>, <0x19a00000 0x10000>;
+			reg-names = "aoc_req", "s2mpu", "chipid", "pcu";
+			interrupts = <GIC_SPI 116 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "watchdog";
+			memory-region = <&{/reserved-memory/aoc@94000000}>;
+			google,gsa = <&gsa>;
+			google,sysmmu = <&aoc_sysmmu>;
+			mboxes = <&aoc_mbox_a32 0>, <&aoc_mbox_a32 1>, <&aoc_mbox_a32 2>, <&aoc_mbox_a32 3>,
+				 <&aoc_mbox_a32 4>, <&aoc_mbox_a32 5>, <&aoc_mbox_a32 6>, <&aoc_mbox_a32 7>,
+				 <&aoc_mbox_a32 8>, <&aoc_mbox_a32 9>, <&aoc_mbox_a32 10>, <&aoc_mbox_a32 11>,
+				 <&aoc_mbox_a32 12>, <&aoc_mbox_a32 13>, <&aoc_mbox_a32 14>, <&aoc_mbox_a32 15>,
+				 <&aoc_mbox_f1 0>, <&aoc_mbox_f1 1>, <&aoc_mbox_f1 2>, <&aoc_mbox_f1 3>,
+				 <&aoc_mbox_f1 4>, <&aoc_mbox_f1 5>, <&aoc_mbox_f1 6>, <&aoc_mbox_f1 7>,
+				 <&aoc_mbox_f1 8>, <&aoc_mbox_f1 9>, <&aoc_mbox_f1 10>, <&aoc_mbox_f1 11>,
+				 <&aoc_mbox_f1 12>, <&aoc_mbox_f1 13>, <&aoc_mbox_f1 14>, <&aoc_mbox_f1 15>,
+				 <&aoc_mbox_p6 0>, <&aoc_mbox_p6 1>, <&aoc_mbox_p6 2>, <&aoc_mbox_p6 3>,
+				 <&aoc_mbox_p6 4>, <&aoc_mbox_p6 5>, <&aoc_mbox_p6 6>, <&aoc_mbox_p6 7>,
+				 <&aoc_mbox_p6 8>, <&aoc_mbox_p6 9>, <&aoc_mbox_p6 10>, <&aoc_mbox_p6 11>,
+				 <&aoc_mbox_p6 12>, <&aoc_mbox_p6 13>, <&aoc_mbox_p6 14>, <&aoc_mbox_p6 15>;
+			status = "disabled";
+		};
+
+		aoc_mbox_a32: mailbox@18300000 {
+			compatible = "google,gs201-aoc-mbox";
+			reg = <0x18300000 0x1000>;
+			interrupts = <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>;
+			#mbox-cells = <1>;
+			status = "disabled";
+		};
+
+		aoc_mbox_f1: mailbox@18320000 {
+			compatible = "google,gs201-aoc-mbox";
+			reg = <0x18320000 0x1000>;
+			interrupts = <GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
+			#mbox-cells = <1>;
+			status = "disabled";
+		};
+
+		aoc_mbox_p6: mailbox@18340000 {
+			compatible = "google,gs201-aoc-mbox";
+			reg = <0x18340000 0x1000>;
+			interrupts = <GIC_SPI 77 IRQ_TYPE_LEVEL_HIGH>;
+			#mbox-cells = <1>;
+			status = "disabled";
+		};
+
+		/*
+		 * Multi-core timer. Gives the kernel a broadcast clock event
+		 * device that keeps running while cores are powered down in C2.
+		 */
+		mct: timer@10050000 {
+			compatible = "google,gs201-mct", "samsung,exynos4210-mct";
+			reg = <0x10050000 0x800>;
+			clocks = <&oscclk>, <&cmu_misc CLK_GOUT_MISC_MCT_PCLK>;
+			clock-names = "fin_pll", "mct";
+			interrupts = <GIC_SPI 785 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 786 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 787 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 788 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 789 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 790 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 791 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 792 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 793 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 794 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 795 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 796 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		/*
+		 * ABL leaves both watchdogs running (about 60 s). The driver stops
+		 * them at probe unless tmr_atboot is set.
+		 */
+		watchdog_cl0: watchdog@10060000 {
+			compatible = "google,gs201-wdt";
+			reg = <0x10060000 0x100>;
+			clocks = <&cmu_misc CLK_GOUT_MISC_WDT_CLUSTER0_PCLK>,
+				 <&oscclk>;
+			clock-names = "watchdog", "watchdog_src";
+			interrupts = <GIC_SPI 797 IRQ_TYPE_LEVEL_HIGH>;
+			samsung,syscon-phandle = <&pmu_system_controller>;
+			samsung,cluster-index = <0>;
+		};
+
+		watchdog_cl1: watchdog@10070000 {
+			compatible = "google,gs201-wdt";
+			reg = <0x10070000 0x100>;
+			clocks = <&cmu_misc CLK_GOUT_MISC_WDT_CLUSTER1_PCLK>,
+				 <&oscclk>;
+			clock-names = "watchdog", "watchdog_src";
+			interrupts = <GIC_SPI 798 IRQ_TYPE_LEVEL_HIGH>;
+			samsung,syscon-phandle = <&pmu_system_controller>;
+			samsung,cluster-index = <1>;
+		};
+
+		/*
+		 * Shared with the APM firmware; the driver only reads it. Off by
+		 * default until the Bluetooth UART bring-up has passed.
+		 */
+		cmu_apm: clock-controller@18000000 {
+			compatible = "google,gs201-cmu-apm";
+			reg = <0x18000000 0x10000>;
+			#clock-cells = <1>;
+			clocks = <&oscclk>;
+			clock-names = "oscclk";
+			status = "disabled";
+		};
+
+		sysreg_apm: syscon@18020000 {
+			compatible = "google,gs201-apm-sysreg", "syscon";
+			reg = <0x18020000 0x10000>;
+		};
+
+		pmu_system_controller: system-controller@18060000 {
+			compatible = "google,gs201-pmu", "syscon";
+			reg = <0x18060000 0x10000>;
+			/* CLKOUT0/1 pads (PAD_CTRL_CLKOUTn), fed from the TCXO */
+			#clock-cells = <1>;
+			clocks = <&oscclk>;
+			clock-names = "clkout0";
+			google,pmu-intr-gen-syscon = <&pmu_intr_gen>;
+
+			syscon-poweroff {
+				compatible = "syscon-poweroff";
+				offset = <0x3e9c>;	/* PAD_CTRL_PWR_HOLD */
+				mask = <0x100>;
+				value = <0x0>;
+			};
+
+			reboot-mode {
+				compatible = "syscon-reboot-mode";
+				offset = <0x0810>;	/* SYSIP_DAT0 */
+				mode-bootloader = <0xfc>;
+				mode-fastboot = <0xfa>;
+				mode-recovery = <0xff>;
+			};
+		};
+
+		pmu_intr_gen: syscon@18070000 {
+			compatible = "google,gs201-pmu-intr-gen", "syscon";
+			reg = <0x18070000 0x10000>;
+		};
+
+		pinctrl_gpio_alive: pinctrl@180d0000 {
+			compatible = "google,gs201-pinctrl";
+			reg = <0x180d0000 0x1000>;
+			/* TODO: CMU_APM gate, once there is a driver for it */
+			clocks = <0>;
+			clock-names = "pclk";
+
+			wakeup-interrupt-controller {
+				compatible = "google,gs201-wakeup-eint",
+					     "google,gs101-wakeup-eint",
+					     "samsung,exynos850-wakeup-eint",
+					     "samsung,exynos7-wakeup-eint";
+			};
+		};
+
+		pinctrl_far_alive: pinctrl@180e0000 {
+			compatible = "google,gs201-pinctrl";
+			reg = <0x180e0000 0x1000>;
+			/* TODO: CMU_APM gate, once there is a driver for it */
+			clocks = <0>;
+			clock-names = "pclk";
+
+			wakeup-interrupt-controller {
+				compatible = "google,gs201-wakeup-eint",
+					     "google,gs101-wakeup-eint",
+					     "samsung,exynos850-wakeup-eint",
+					     "samsung,exynos7-wakeup-eint";
+			};
+		};
+
+		/* APM USI1: a UART-only USI, wired to Bluetooth on Pixel 7 devices */
+		usi_apm1: usi@181b00c0 {
+			compatible = "google,gs201-usi", "samsung,exynos850-usi";
+			reg = <0x181b00c0 0x20>;
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			clocks = <&cmu_apm CLK_GOUT_APM_APM_USI1_UART_PCLK>,
+				 <&cmu_apm CLK_GOUT_APM_APM_USI1_UART_IPCLK>;
+			clock-names = "pclk", "ipclk";
+			samsung,sysreg = <&sysreg_apm 0x4e4>;
+			samsung,mode = <USI_MODE_UART>;
+			/* UART Rx needs the IP clock while idle */
+			samsung,clkreq-on;
+			status = "disabled";
+
+			serial_apm1: serial@181b0000 {
+				compatible = "google,gs201-uart", "google,gs101-uart";
+				reg = <0x181b0000 0xc0>;
+				clocks = <&cmu_apm CLK_GOUT_APM_APM_USI1_UART_PCLK>,
+					 <&cmu_apm CLK_GOUT_APM_APM_USI1_UART_IPCLK>;
+				clock-names = "uart", "clk_uart_baud0";
+				interrupts = <GIC_SPI 69 IRQ_TYPE_LEVEL_HIGH>;
+				pinctrl-0 = <&uart_apm1_bus>;
+				pinctrl-names = "default";
+				samsung,uart-fifosize = <256>;
+				status = "disabled";
+			};
+		};
+
+		ap2apm_mailbox: mailbox@18210000 {
+			compatible = "google,gs201-mbox", "google,gs101-mbox";
+			reg = <0x18210000 0x1000>;
+			clocks = <&apm_mbox_pclk>;
+			clock-names = "pclk";
+			interrupts = <GIC_SPI 78 IRQ_TYPE_LEVEL_HIGH>;
+			#mbox-cells = <0>;
+		};
+
+		/* Latches the S2MPG12 PMIC's in-band interrupt (GIC SPI 72). */
+		sysreg_vgpio2ap: syscon@182f0000 {
+			compatible = "google,gs201-vgpio2ap-sysreg", "syscon";
+			reg = <0x182f0000 0x1000>;
+		};
+
+		apm_sram: sram@18500000 {
+			compatible = "mmio-sram";
+			reg = <0x18500000 0x48000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0x0 0x18500000 0x48000>;
+		};
+
+		/*
+		 * No power-domains: the bootloader leaves both G3D power domains
+		 * (pd_g3d, pd_embedded_g3d) on, and nothing in Linux turns them
+		 * off yet. Their on/off sequence needs EL3 calls that the generic
+		 * Exynos power domain driver does not make.
+		 */
+		/*
+		 * DECON0 and the DPP0 read DMA it scans out through. No
+		 * power-domains, as for dsi0: nothing may power the DPU down
+		 * while DECON runs.
+		 */
+		decon0: display-controller@1c240000 {
+			compatible = "google,gs201-decon";
+			reg = <0x1c240000 0x6000>, <0x1c0b0000 0x1000>;
+			reg-names = "main", "dma";
+			interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 240 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "frame_start", "frame_done", "extra";
+			/* floors for the 120 Hz mode */
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_MIF>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_DISP>;
+			clock-names = "mif", "disp";
+			status = "disabled";
+
+			port {
+				decon0_out: endpoint {
+					remote-endpoint = <&dsi0_in>;
+				};
+			};
+		};
+
+		dsi0: dsi@1c2c0000 {
+			compatible = "google,gs201-dsim";
+			reg = <0x1c2c0000 0x300>,
+			      <0x1c2e0100 0x700>,
+			      <0x1c2e0000 0x100>;
+			reg-names = "dsi", "dphy", "dphy-extra";
+			interrupts = <GIC_SPI 250 IRQ_TYPE_LEVEL_HIGH>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+
+			port {
+				dsi0_in: endpoint {
+					remote-endpoint = <&decon0_out>;
+				};
+			};
+		};
+
+		gpu: gpu@28000000 {
+			compatible = "google,gs201-mali", "arm,mali-valhall-csf";
+			reg = <0x28000000 0x480000>;
+			interrupts = <GIC_SPI 329 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 330 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 328 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "job", "mmu", "gpu";
+			clocks = <&acpm_ipc GS201_CLK_ACPM_GPU>;
+			clock-names = "core";
+			operating-points-v2 = <&gpu_opp_table>;
+			status = "disabled";
+		};
+	};
+};
+
+#include "gs201-pinctrl.dtsi"

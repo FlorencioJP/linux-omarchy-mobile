@@ -1,0 +1,212 @@
+# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/i2c/samsung,s5kgn1.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Samsung S5KGN1, S5K3J1 and S5KGM5 image sensors
+
+maintainers:
+  - Derek Ross <derekross@gmail.com>
+
+description:
+  Samsung Bayer CMOS sensors with a MIPI CSI-2 C-PHY or D-PHY output,
+  controlled over I2C - the S5KGN1 (ISOCELL GN1, 50 MP, dual-pixel phase
+  detection), the S5K3J1 (10.5 MP, dual-pixel phase detection) and the
+  S5KGM5 (ISOCELL GM5, 48 MP). Their initialisation and readout modes are
+  loaded from a data file named by firmware-name.
+
+allOf:
+  - $ref: /schemas/media/video-interface-devices.yaml#
+  - if:
+      properties:
+        compatible:
+          const: samsung,s5kgn1
+    then:
+      required:
+        - vaux-supply
+        - vana-supply
+    else:
+      properties:
+        vaux-supply: false
+  - if:
+      properties:
+        compatible:
+          const: samsung,s5kgm5
+    then:
+      required:
+        - vana-supply
+      properties:
+        vsw-supply: false
+  - if:
+      properties:
+        compatible:
+          const: samsung,s5k3j1
+    then:
+      properties:
+        vana-supply: false
+
+properties:
+  compatible:
+    enum:
+      - samsung,s5k3j1
+      - samsung,s5kgm5
+      - samsung,s5kgn1
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    maxItems: 1
+
+  reset-gpios:
+    maxItems: 1
+    description: RSTN, active low.
+
+  vio-supply:
+    description: Interface (1.8 V) supply.
+
+  vaux-supply:
+    description:
+      The module's auxiliary supply (2.9 V on the Pixel 7 Pro, shared with
+      its focus actuator), switched on right after the interface supply.
+
+  vsw-supply:
+    description:
+      A switched module supply, on before the core supplies (S5KGN1) or
+      after the digital supply (S5K3J1).
+
+  vdig-supply:
+    description: Digital core supply.
+
+  vana-supply:
+    description: Analog supply.
+
+  vbb-supply:
+    description:
+      Board supply feeding the module's analog regulators, to be switched on
+      first where the board's power-up order requires it.
+
+  vbuck-supply:
+    description:
+      Board supply feeding the module's digital regulator, switched on
+      after vbb-supply.
+
+  firmware-name:
+    maxItems: 1
+
+  samsung,power-delays-us:
+    description:
+      Overrides the part's power-up waits. The S5KGN1 releases reset before
+      starting its clock, the others after.
+    items:
+      - description: wait after vaux-supply (S5KGN1) or vio-supply (S5KGM5)
+      - description: wait after the last supply
+      - description: wait after the first of reset and clock
+      - description: wait after the other
+
+  samsung,vertical-flip:
+    type: boolean
+    description:
+      Read the pixel array out bottom to top. For a module whose optics
+      mirror the image vertically, such as a folded telephoto lens.
+
+  port:
+    $ref: /schemas/graph.yaml#/$defs/port-base
+    unevaluatedProperties: false
+
+    properties:
+      endpoint:
+        $ref: /schemas/media/video-interfaces.yaml#
+        unevaluatedProperties: false
+
+        properties:
+          bus-type:
+            enum:
+              - 1 # MEDIA_BUS_TYPE_CSI2_CPHY
+              - 4 # MEDIA_BUS_TYPE_CSI2_DPHY
+          data-lanes:
+            minItems: 1
+            maxItems: 4
+          link-frequencies: true
+
+        required:
+          - data-lanes
+          - link-frequencies
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - reset-gpios
+  - vio-supply
+  - vdig-supply
+  - firmware-name
+  - port
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    #include <dt-bindings/media/video-interfaces.h>
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        camera@3d {
+            compatible = "samsung,s5kgn1";
+            reg = <0x3d>;
+            clocks = <&mclk>;
+            reset-gpios = <&gpp2 2 GPIO_ACTIVE_LOW>;
+            vio-supply = <&vddio_cam>;
+            vaux-supply = <&main_vaux>;
+            vsw-supply = <&main_sw>;
+            vdig-supply = <&main_dvdd>;
+            vana-supply = <&main_avdd>;
+            firmware-name = "omandroid/camera/s5kgn1-main.bin";
+            lens-focus = <&main_vcm>;
+            orientation = <1>;
+            rotation = <90>;
+
+            port {
+                endpoint {
+                    remote-endpoint = <&csis_in>;
+                    bus-type = <MEDIA_BUS_TYPE_CSI2_CPHY>;
+                    data-lanes = <1 2 3>;
+                    link-frequencies = /bits/ 64 <931229968>;
+                };
+            };
+        };
+    };
+
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    #include <dt-bindings/media/video-interfaces.h>
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        camera@2d {
+            compatible = "samsung,s5kgm5";
+            reg = <0x2d>;
+            clocks = <&mclk>;
+            reset-gpios = <&gpp6 2 GPIO_ACTIVE_LOW>;
+            vio-supply = <&vddio_cam>;
+            vdig-supply = <&tele_dvdd>;
+            vana-supply = <&tele_avdd>;
+            firmware-name = "omandroid/camera/s5kgm5-tele.bin";
+            samsung,vertical-flip;
+            orientation = <1>;
+            rotation = <270>;
+
+            port {
+                endpoint {
+                    remote-endpoint = <&csis_in>;
+                    bus-type = <MEDIA_BUS_TYPE_CSI2_CPHY>;
+                    data-lanes = <1 2>;
+                    link-frequencies = /bits/ 64 <901120000>;
+                };
+            };
+        };
+    };
