@@ -23,6 +23,10 @@
  *   wdma          CSIS WDMA context 0 interrupt mask (0x1a4d7404)
  *   phybias       DC-PHY shared bias control 0 (0x1a4f1000); also needs
  *                 the PHY isolation released
+ *   csismux       CMU_CSIS PLL_CON0_MUX_CLKCMU_CSIS_NOC_USER (0x1a400600):
+ *                 bit 4 selects the CSIS NoC clock from CMU_TOP (1) or the
+ *                 oscillator (0)
+ *   csisdiv       CMU_CSIS CLK_CON_DIV_DIV_CLK_CSIS_NOCP (0x1a401800)
  *
  * The addresses come from Google's GPL gs201 device tree (the lwis CSIS,
  * DMA and PHY nodes) and PHY driver. Every address is logged before it is
@@ -52,10 +56,13 @@
 #define CSIS_WDMA0_INT_MASK		0x7404
 #define DCPHY_BASE			0x1a4f0000
 #define DCPHY_M_BIAS_CON0		0x1000
+#define CMU_CSIS_BASE			0x1a400000	/* Google's GPL gs201 CMU data */
+#define CMU_CSIS_NOC_USER		0x600
+#define CMU_CSIS_DIV_NOCP		0x1800
 
 static char *step = "pmu";
 module_param(step, charp, 0444);
-MODULE_PARM_DESC(step, "pmu (default), link0..link7, wdma or phybias");
+MODULE_PARM_DESC(step, "pmu (default), link0..link7, wdma, phybias, csismux or csisdiv");
 
 struct cam_probe_state {
 	bool csis_on;
@@ -160,6 +167,13 @@ static int __init cam_probe_init(void)
 		return cam_probe_read_one(DCPHY_BASE + DCPHY_M_BIAS_CON0,
 					  "DC-PHY M_BIAS_CON0");
 	}
+
+	if (!strcmp(step, "csismux"))
+		return cam_probe_read_one(CMU_CSIS_BASE + CMU_CSIS_NOC_USER,
+					  "CMU_CSIS NOC_USER mux");
+	if (!strcmp(step, "csisdiv"))
+		return cam_probe_read_one(CMU_CSIS_BASE + CMU_CSIS_DIV_NOCP,
+					  "CMU_CSIS NOCP divider");
 
 	pr_err("unknown step '%s'\n", step);
 	return -EINVAL;

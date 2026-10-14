@@ -1262,6 +1262,7 @@
 		vdig-supply = <&cam_ldo6>;
 		vana-supply = <&cam_ldo2>;
 		firmware-name = "omamobile/camera/imx386-uw.bin";
+		sony,max-line-throughput = <360>;
 		orientation = <1>;	/* back */
 		rotation = <90>;	/* the frame is upright after a 90-degree clockwise turn */
 		status = "disabled";
@@ -1463,7 +1464,12 @@
 };
 
 &hsi2c_4 {
-	clock-frequency = <1000000>;
+	/*
+	 * Below 1 MHz: i2c-exynos5 runs 1 MHz as high-speed mode (master
+	 * code first), which stock's driver doesn't without samsung,hs-mode;
+	 * the telephoto's SEM1215SA lens hung the bus in it.
+	 */
+	clock-frequency = <950000>;
 
 	camera-sensor@2d {
 		compatible = "samsung,s5kgm5";

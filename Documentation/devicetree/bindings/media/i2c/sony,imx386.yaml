@@ -59,6 +59,13 @@ properties:
       - description: wait after the clock starts
       - description: wait after reset is released
 
+  sony,max-line-throughput:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description:
+      The most bytes per microsecond (MB/s) the receiver takes within a
+      line. Modes whose lines would arrive faster get a longer line length
+      (more horizontal blanking at the same pixel clock).
+
   port:
     $ref: /schemas/graph.yaml#/$defs/port-base
     unevaluatedProperties: false
