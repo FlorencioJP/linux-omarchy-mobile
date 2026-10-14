@@ -1262,7 +1262,8 @@
 		vdig-supply = <&cam_ldo6>;
 		vana-supply = <&cam_ldo2>;
 		firmware-name = "omamobile/camera/imx386-uw.bin";
-		sony,max-line-throughput = <360>;
+		/* 360 still let an odd frame of the 4032x3016 mode drop lines */
+		sony,max-line-throughput = <330>;
 		orientation = <1>;	/* back */
 		rotation = <270>;	/* mounted the other way from the main camera (upside down at 90) */
 		status = "disabled";
