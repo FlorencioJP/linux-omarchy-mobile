@@ -1264,7 +1264,7 @@
 		firmware-name = "omamobile/camera/imx386-uw.bin";
 		sony,max-line-throughput = <360>;
 		orientation = <1>;	/* back */
-		rotation = <90>;	/* the frame is upright after a 90-degree clockwise turn */
+		rotation = <270>;	/* mounted the other way from the main camera (upside down at 90) */
 		status = "disabled";
 
 		port {
@@ -1355,7 +1355,7 @@
 		/* the CSIS WDMA drops lines arriving above ~400 MB/s */
 		samsung,max-line-throughput = <360>;
 		orientation = <1>;	/* back */
-		rotation = <90>;	/* [I] as the ultrawide; CAM-M.5 checks it */
+		rotation = <90>;	/* upright in Snapshot with the phone in portrait */
 		status = "disabled";
 
 		port {
@@ -1423,7 +1423,7 @@
 		firmware-name = "omamobile/camera/s5k3j1-front.bin";
 		samsung,max-line-throughput = <360>;
 		orientation = <0>;	/* front */
-		rotation = <270>;	/* [I] CAM-F checks it */
+		rotation = <90>;	/* upside down at 270 in Snapshot */
 		status = "disabled";
 
 		port {
@@ -1489,7 +1489,7 @@
 		samsung,max-line-throughput = <360>;
 		samsung,vertical-flip;
 		orientation = <1>;	/* back */
-		rotation = <270>;	/* [I] CAM-T checks it */
+		rotation = <90>;	/* upside down at 270 in Snapshot (with the vertical flip) */
 		status = "disabled";
 
 		port {
