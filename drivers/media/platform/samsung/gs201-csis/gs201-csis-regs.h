@@ -128,6 +128,7 @@
 #define CSIS_WDMA_INT_SRC		0x408
 #define CSIS_WDMA_FRO_FRAME_NUM		0x420
 #define CSIS_WDMA_SBWC_CTRL		0x440
+#define CSIS_WDMA_BW_LIMIT(n)		(0x560 + 4 * (n))	/* [HAL] names, meaning [I] */
 
 /* WDMA interrupt bits [GPL] */
 #define CSIS_WDMA_INT_LINE_END(ch)	BIT(0 + (ch))

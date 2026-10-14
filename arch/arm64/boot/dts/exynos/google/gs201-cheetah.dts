@@ -1351,6 +1351,8 @@
 		vdig-supply = <&cam_ldo8>;
 		vana-supply = <&cam_ldo1>;
 		firmware-name = "omamobile/camera/s5kgn1-main.bin";
+		/* the CSIS WDMA drops C-PHY lines arriving above ~400 MB/s */
+		samsung,max-line-throughput = <360>;
 		orientation = <1>;	/* back */
 		rotation = <90>;	/* [I] as the ultrawide; CAM-M.5 checks it */
 		status = "disabled";
@@ -1477,6 +1479,7 @@
 		vdig-supply = <&cam_ldo7>;
 		vana-supply = <&cam_ldo3>;
 		firmware-name = "omamobile/camera/s5kgm5-tele.bin";
+		samsung,max-line-throughput = <360>;
 		samsung,vertical-flip;
 		orientation = <1>;	/* back */
 		rotation = <270>;	/* [I] CAM-T checks it */

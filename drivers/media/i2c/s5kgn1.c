@@ -60,6 +60,7 @@
 #define S5KGN1_REG_ORIENTATION		CCI_REG8(0x0101)
 #define S5KGN1_VFLIP			BIT(1)
 #define S5KGN1_REG_FRAME_LENGTH		CCI_REG16(0x0340)
+#define S5KGN1_REG_LINE_LENGTH		CCI_REG16(0x0342)
 #define S5KGN1_REG_TEST_PATTERN		CCI_REG16(0x0600)
 
 /*
@@ -131,6 +132,7 @@ struct s5kgn1_mode {
 	u32 width;
 	u32 height;
 	u32 line_length;
+	u32 table_line_length;	/* as the mode's list writes it */
 	u32 frame_length;
 	u64 pixel_rate;
 	s64 link_freq;
@@ -262,6 +264,7 @@ struct s5kgn1 {
 	struct regulator *supplies[S5KGN1_MAX_SUPPLIES];
 	u32 delays_us[4];		/* as in struct s5kgn1_variant */
 	bool vflip;			/* read the array out bottom to top */
+	u32 max_line_mbps;		/* receiver's line throughput, MB/s; 0: none */
 
 	struct v4l2_ctrl_handler ctrls;
 	struct v4l2_ctrl *link_freq;
@@ -422,6 +425,29 @@ static void s5kgn1_mode_crop(struct s5kgn1 *s, struct s5kgn1_mode *mode)
 	}
 }
 
+/*
+ * A receiver that takes lines at no more than so many bytes a second needs
+ * each line to last at least its size over that rate: lengthen the line
+ * (more horizontal blanking at the same pixel clock) where the mode's is
+ * shorter. The frame rate then tops out lower; nothing else changes.
+ */
+static void s5kgn1_limit_line_rate(struct s5kgn1 *s, struct s5kgn1_mode *mode)
+{
+	u64 bytes = DIV_ROUND_UP(mode->width * 10, 8);
+	u64 min_ll;
+
+	if (!s->max_line_mbps)
+		return;
+
+	min_ll = DIV64_U64_ROUND_UP(mode->pixel_rate * bytes,
+				    (u64)s->max_line_mbps * 1000000);
+	if (min_ll > mode->line_length && min_ll <= 0xfff0) {
+		dev_dbg(s->dev, "%ux%u: line length %u -> %llu\n", mode->width,
+			mode->height, mode->line_length, min_ll);
+		mode->line_length = ALIGN(min_ll, 2);
+	}
+}
+
 static int s5kgn1_load_data(struct s5kgn1 *s)
 {
 	const struct s5kgn1_fw_header *h;
@@ -478,6 +504,7 @@ static int s5kgn1_load_data(struct s5kgn1 *s)
 		mode->height = le16_to_cpu(m->height);
 		mode->line_length = le16_to_cpu(m->line_length);
 		mode->frame_length = le16_to_cpu(m->frame_length);
+		mode->table_line_length = mode->line_length;
 		mode->pixel_rate = le32_to_cpu(m->pixel_rate);
 		mode->link_freq = le32_to_cpu(m->link_freq);
 		mode->num_regs = le32_to_cpu(m->regs_count);
@@ -492,6 +519,7 @@ static int s5kgn1_load_data(struct s5kgn1 *s)
 			goto bad;
 
 		s5kgn1_mode_crop(s, mode);
+		s5kgn1_limit_line_rate(s, mode);
 		s->native.width = max_t(u32, s->native.width,
 					mode->crop.left + mode->crop.width);
 		s->native.height = max_t(u32, s->native.height,
@@ -900,6 +928,8 @@ static int s5kgn1_enable_streams(struct v4l2_subdev *sd,
 		ret = s5kgn1_write_table(s, s->mode->regs, s->mode->num_regs);
 	if (!ret)
 		ret = s5kgn1_post_tables(s);
+	if (!ret && s->mode->line_length != s->mode->table_line_length)
+		cci_write(s->regmap, S5KGN1_REG_LINE_LENGTH, s->mode->line_length, &ret);
 	if (!ret)
 		ret = s5kgn1_extra_regs(s);
 	if (!ret)
@@ -1152,6 +1182,7 @@ static int s5kgn1_probe(struct i2c_client *client)
 	device_property_read_u32_array(dev, "samsung,power-delays-us",
 				       s->delays_us, ARRAY_SIZE(s->delays_us));
 	s->vflip = device_property_read_bool(dev, "samsung,vertical-flip");
+	device_property_read_u32(dev, "samsung,max-line-throughput", &s->max_line_mbps);
 
 	s->mclk = devm_clk_get(dev, NULL);
 	if (IS_ERR(s->mclk))

@@ -144,6 +144,7 @@ struct gs201_csis {
 	unsigned long int_rate_old;
 	u32 sc_con_saved[CSIS_SYSREG_SC_CON_NUM];
 	u32 ebuf_in_saved;
+	u32 link_sel_saved;
 	u32 ebuf_ctrl_saved;
 	unsigned int link_id;
 	unsigned int ctx_id;
@@ -389,6 +390,58 @@ module_param(sc_con, uint, 0644);
 MODULE_PARM_DESC(sc_con, "CSIS sysreg SC_CON0-2 value, 1-7 (bring-up; default 1)");
 
 /*
+ * Bring-up: program all 32 address slots with the buffer's address and
+ * mark them all valid, instead of slot 0 only. If a second frame start
+ * (another virtual channel's) moves the channel to its next slot in the
+ * middle of a frame, that slot then points at the same buffer instead of
+ * at nothing.
+ */
+static bool all_slots;
+module_param(all_slots, bool, 0644);
+MODULE_PARM_DESC(all_slots, "Write the buffer address to all 32 WDMA slots (bring-up)");
+
+/*
+ * Bring-up: bits to set in CSIS sysreg 0x488 at stream on (stock sets
+ * bit link + 8 x PDP channel there; on gs101 these were per-link data
+ * enables). Restored at stop.
+ */
+static unsigned int link_sel_bits;
+module_param(link_sel_bits, uint, 0644);
+MODULE_PARM_DESC(link_sel_bits, "Bits to set in CSIS sysreg 0x488 while streaming (bring-up)");
+
+/*
+ * Bring-up: program the WDMA for only this many rows (0: the format's),
+ * to see whether a short frame lands where a whole one doesn't.
+ */
+static unsigned int wdma_rows;
+module_param(wdma_rows, uint, 0644);
+MODULE_PARM_DESC(wdma_rows, "WDMA frame height in rows, if smaller than the format's (bring-up)");
+
+/*
+ * Bring-up: the WDMA channel's format code instead of the pixel format's
+ * (e.g. 6, ten bits in 16; size the buffer with extra_lines, as the
+ * stride stays the packed one). 0: the pixel format's.
+ */
+static unsigned int wdma_fmt;
+module_param(wdma_fmt, uint, 0644);
+MODULE_PARM_DESC(wdma_fmt, "WDMA format code override (bring-up; 0: the pixel format's)");
+
+/*
+ * Bring-up: the WDMA context's bandwidth limit registers (0x560-0x568,
+ * "dma_bw_limit_0-2" in the stock HAL's register table). The C-PHY cameras
+ * land frames only while each line takes long enough that the WDMA writes
+ * at most about 400 MB/s; their values are logged at start, and
+ * bw_limitN=V writes V (default: left as found).
+ */
+static int bw_limit0 = -1, bw_limit1 = -1, bw_limit2 = -1;
+module_param(bw_limit0, int, 0644);
+MODULE_PARM_DESC(bw_limit0, "WDMA context bandwidth limit register 0 value (bring-up; -1: leave)");
+module_param(bw_limit1, int, 0644);
+MODULE_PARM_DESC(bw_limit1, "WDMA context bandwidth limit register 1 value (bring-up; -1: leave)");
+module_param(bw_limit2, int, 0644);
+MODULE_PARM_DESC(bw_limit2, "WDMA context bandwidth limit register 2 value (bring-up; -1: leave)");
+
+/*
  * Bring-up: write the DMA common page's per-link configuration word at
  * 0x48 (named for link 1 in the stock HAL's register table; stock writes
  * 0x100) at start. 0 leaves it as found, and the value found is logged.
@@ -581,8 +634,13 @@ static inline void wdma_ch_write(struct gs201_csis *csis, u32 reg, u32 val)
 
 static void gs201_csis_wdma_set_addr(struct gs201_csis *csis, dma_addr_t addr)
 {
+	unsigned int n;
+
 	/* One slot, rewritten each frame start for the frame after [I] */
 	wdma_ch_write(csis, CSIS_WDMA_ADDR(1), lower_32_bits(addr));
+	if (all_slots)
+		for (n = 2; n <= 32; n++)
+			wdma_ch_write(csis, CSIS_WDMA_ADDR(n), lower_32_bits(addr));
 }
 
 /*
@@ -671,16 +729,27 @@ static void gs201_csis_wdma_start(struct gs201_csis *csis)
 		 val, wdma_read(csis, CSIS_WDMA_DATA_CTRL),
 		 readl(csis->dma + CSIS_DMA_CMN_QURGENT_EN));
 
+	dev_info(csis->dev, "WDMA bandwidth limits 0x%08x 0x%08x 0x%08x\n",
+		 wdma_read(csis, CSIS_WDMA_BW_LIMIT(0)), wdma_read(csis, CSIS_WDMA_BW_LIMIT(1)),
+		 wdma_read(csis, CSIS_WDMA_BW_LIMIT(2)));
+	if (bw_limit0 >= 0)
+		wdma_write(csis, CSIS_WDMA_BW_LIMIT(0), bw_limit0);
+	if (bw_limit1 >= 0)
+		wdma_write(csis, CSIS_WDMA_BW_LIMIT(1), bw_limit1);
+	if (bw_limit2 >= 0)
+		wdma_write(csis, CSIS_WDMA_BW_LIMIT(2), bw_limit2);
+
 	wdma_ch_write(csis, CSIS_WDMA_FMT,
-		      FIELD_PREP(CSIS_WDMA_FMT_CODE, csis->fmt->wdma_fmt));
+		      FIELD_PREP(CSIS_WDMA_FMT_CODE, wdma_fmt ?: csis->fmt->wdma_fmt));
 	wdma_ch_write(csis, CSIS_WDMA_SKIP, 0);
 	/* the buffer was sized with the extra lines when the format was set */
 	wdma_ch_write(csis, CSIS_WDMA_RESOL,
-		      FIELD_PREP(CSIS_WDMA_RESOL_V, csis->pix.sizeimage /
-				 csis->pix.bytesperline) |
+		      FIELD_PREP(CSIS_WDMA_RESOL_V, wdma_rows &&
+				 wdma_rows < csis->pix.sizeimage / csis->pix.bytesperline ?
+				 wdma_rows : csis->pix.sizeimage / csis->pix.bytesperline) |
 		      FIELD_PREP(CSIS_WDMA_RESOL_H, csis->pix.width));
 	wdma_ch_write(csis, CSIS_WDMA_STRIDE, csis->pix.bytesperline);
-	wdma_ch_write(csis, CSIS_WDMA_FCNT_SEQ, BIT(0));
+	wdma_ch_write(csis, CSIS_WDMA_FCNT_SEQ, all_slots ? ~0u : BIT(0));
 	wdma_write(csis, CSIS_WDMA_SBWC_CTRL, 0);
 
 	wdma_write(csis, CSIS_WDMA_INT_SRC, ~0u);
@@ -1029,6 +1098,10 @@ static int gs201_csis_enable_streams(struct v4l2_subdev *sd,
 			regmap_update_bits(csis->sysreg, CSIS_SYSREG_LINK_SEL,
 					   BIT(csis->link_id + 24),
 					   BIT(csis->link_id + 24));
+		csis->link_sel_saved = sel;
+		if (link_sel_bits)
+			regmap_update_bits(csis->sysreg, CSIS_SYSREG_LINK_SEL,
+					   link_sel_bits, link_sel_bits);
 	}
 
 	gs201_csis_dvfs_vote(csis, csis->cam_clk, "CAM",
@@ -1092,6 +1165,8 @@ static int gs201_csis_disable_streams(struct v4l2_subdev *sd,
 
 	v4l2_subdev_disable_streams(csis->source.sd, csis->source.pad->index,
 				    BIT(0));
+	if (link_sel_bits)
+		regmap_write(csis->sysreg, CSIS_SYSREG_LINK_SEL, csis->link_sel_saved);
 	gs201_csis_link_stop(csis);
 	phy_power_off(csis->phy);
 	gs201_csis_dvfs_restore(csis->cam_clk, &csis->cam_rate_old);
