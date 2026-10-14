@@ -1489,7 +1489,7 @@
 		samsung,max-line-throughput = <360>;
 		samsung,vertical-flip;
 		orientation = <1>;	/* back */
-		rotation = <90>;	/* upside down at 270 in Snapshot (with the vertical flip) */
+		rotation = <270>;	/* with the vertical flip: upside down at 90 in Snapshot */
 		status = "disabled";
 
 		port {

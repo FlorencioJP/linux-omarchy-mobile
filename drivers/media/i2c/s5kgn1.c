@@ -34,6 +34,7 @@
 #include <linux/i2c.h>
 #include <linux/math64.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
@@ -265,6 +266,7 @@ struct s5kgn1 {
 	u32 delays_us[4];		/* as in struct s5kgn1_variant */
 	bool vflip;			/* read the array out bottom to top */
 	u32 max_line_mbps;		/* receiver's line throughput, MB/s; 0: none */
+	struct device *lens;		/* lens-focus device powered while streaming */
 
 	struct v4l2_ctrl_handler ctrls;
 	struct v4l2_ctrl *link_freq;
@@ -910,6 +912,49 @@ static int s5kgn1_post_tables(struct s5kgn1 *s)
 	return ret;
 }
 
+/*
+ * The focus actuator (lens-focus) stays powered while the sensor streams:
+ * a lens controller that shares the module with the sensor (the
+ * telephoto's SEM1215SA) powers only then, after the sensor, as stock
+ * powers it inside the sensor's sequence. Best effort: a lens that doesn't
+ * come up doesn't stop the stream.
+ */
+static void s5kgn1_lens_get(struct s5kgn1 *s)
+{
+	struct device_node *np;
+	struct i2c_client *client;
+	int ret;
+
+	np = of_parse_phandle(s->dev->of_node, "lens-focus", 0);
+	if (!np)
+		return;
+	client = of_find_i2c_device_by_node(np);
+	of_node_put(np);
+	if (!client)
+		return;
+	if (!client->dev.driver) {
+		put_device(&client->dev);
+		return;
+	}
+	ret = pm_runtime_resume_and_get(&client->dev);
+	if (ret) {
+		dev_warn(s->dev, "lens %s didn't power up: %d\n",
+			 dev_name(&client->dev), ret);
+		put_device(&client->dev);
+		return;
+	}
+	s->lens = &client->dev;
+}
+
+static void s5kgn1_lens_put(struct s5kgn1 *s)
+{
+	if (!s->lens)
+		return;
+	pm_runtime_put(s->lens);
+	put_device(s->lens);
+	s->lens = NULL;
+}
+
 static int s5kgn1_enable_streams(struct v4l2_subdev *sd,
 				 struct v4l2_subdev_state *state, u32 pad,
 				 u64 streams_mask)
@@ -935,10 +980,13 @@ static int s5kgn1_enable_streams(struct v4l2_subdev *sd,
 	if (!ret)
 		ret = __v4l2_ctrl_handler_setup(&s->ctrls);
 	if (!ret)
+		s5kgn1_lens_get(s);
+	if (!ret)
 		ret = cci_write(s->regmap, S5KGN1_REG_MODE_SELECT,
 				S5KGN1_MODE_STREAMING, NULL);
 	if (ret) {
 		dev_err(s->dev, "stream on: %d\n", ret);
+		s5kgn1_lens_put(s);
 		pm_runtime_put(s->dev);
 		return ret;
 	}
@@ -972,6 +1020,7 @@ static int s5kgn1_disable_streams(struct v4l2_subdev *sd,
 	cci_read(s->regmap, S5KGN1_REG_FRAME_COUNT, &fc, NULL);
 	dev_info(s->dev, "stopping: frame_count %llu\n", fc);
 	cci_write(s->regmap, S5KGN1_REG_MODE_SELECT, S5KGN1_MODE_STANDBY, NULL);
+	s5kgn1_lens_put(s);
 	pm_runtime_put(s->dev);
 
 	return 0;

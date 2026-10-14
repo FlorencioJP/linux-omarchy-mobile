@@ -18,9 +18,12 @@
  *   0x0206/0x0207 position read back, low and high byte
  *   0x0b00 status monitor on (1)
  * The module's factory focus calibration (big-endian, 16-bit), believed to
- * hold infinity at 0xc7b6 and macro at 0xc7bc, is read once at probe and
- * limits the focus control to the calibrated span plus a margin; values
- * that make no sense leave the whole range.
+ * hold infinity at 0xc7b6 and macro at 0xc7bc, is read at the first
+ * power-up and limits the focus control to the calibrated span plus a
+ * margin; values that make no sense leave the whole range.
+ *
+ * The controller is powered only through runtime PM, which the sensor's
+ * driver takes while it streams: opening the subdev doesn't power it.
  */
 
 #include <linux/delay.h>
@@ -54,6 +57,17 @@ static bool debug_position;
 module_param(debug_position, bool, 0644);
 MODULE_PARM_DESC(debug_position, "Log the position read back after each move");
 
+/*
+ * The controller doesn't answer right after power-up: wait this long after
+ * the supplies before the first read. It only ever powers while its sensor
+ * streams (the sensor driver holds it then), as stock powers it inside the
+ * sensor's sequence: powered on its own, its reads timed out and held the
+ * bus until a reboot (CAMERA-PLAN CAM-T T.3).
+ */
+static unsigned int boot_ms = 20;
+module_param(boot_ms, uint, 0644);
+MODULE_PARM_DESC(boot_ms, "Wait after power-up before the first read, ms (default 20)");
+
 static const char * const sem1215_supply_names[] = {
 	"vbb", "vio", "vdd", "vsw",
 };
@@ -69,6 +83,7 @@ struct sem1215 {
 	struct v4l2_ctrl *focus;
 	struct regulator *supplies[SEM1215_NUM_SUPPLIES];
 	bool active;
+	bool cal_read;
 };
 
 static inline struct sem1215 *to_sem1215(struct v4l2_subdev *sd)
@@ -166,6 +181,35 @@ static int sem1215_wait_ready(struct sem1215 *lens)
 	return ret;
 }
 
+/*
+ * The focus range: the module's calibrated infinity and macro positions
+ * plus a margin either side, read at the first power-up (the controller
+ * powers only while its sensor streams), or the whole range if the
+ * calibration can't be read or makes no sense.
+ */
+static void sem1215_read_range(struct sem1215 *lens)
+{
+	u64 inf = 0, macro = 0;
+	s32 min, max;
+	int ret = 0;
+
+	lens->cal_read = true;
+	cci_read(lens->regmap, SEM1215_REG_CAL_INF, &inf, &ret);
+	cci_read(lens->regmap, SEM1215_REG_CAL_MACRO, &macro, &ret);
+	if (ret || inf >= macro || macro > SEM1215_POS_MAX) {
+		dev_info(lens->dev, "no focus calibration (%d), range 0-%u\n",
+			 ret, SEM1215_POS_MAX);
+		return;
+	}
+
+	min = max_t(s32, (s32)inf - SEM1215_CAL_MARGIN, 0);
+	max = min_t(s32, (s32)macro + SEM1215_CAL_MARGIN, SEM1215_POS_MAX);
+	v4l2_ctrl_modify_range(lens->focus, min, max, 1,
+			       clamp(lens->focus->default_value, (s64)min, (s64)max));
+	dev_info(lens->dev, "focus range %d-%d (calibrated %llu-%llu)\n",
+		 min, max, inf, macro);
+}
+
 static int sem1215_power_on(struct device *dev)
 {
 	struct v4l2_subdev *sd = dev_get_drvdata(dev);
@@ -178,8 +222,12 @@ static int sem1215_power_on(struct device *dev)
 	ret = sem1215_supplies_on(lens);
 	if (ret)
 		return ret;
+	if (boot_ms)
+		msleep(boot_ms);
 
 	ret = sem1215_wait_ready(lens);
+	if (!ret && !lens->cal_read)
+		sem1215_read_range(lens);
 	if (!ret)
 		ret = cci_write(lens->regmap, SEM1215_REG_AF_CTRL, SEM1215_AF_ON, NULL);
 	if (!ret)
@@ -211,70 +259,17 @@ static int sem1215_power_off(struct device *dev)
 	return 0;
 }
 
-static int sem1215_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
-{
-	return pm_runtime_resume_and_get(sd->dev);
-}
-
-static int sem1215_close(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
-{
-	pm_runtime_put(sd->dev);
-
-	return 0;
-}
-
-static const struct v4l2_subdev_internal_ops sem1215_internal_ops = {
-	.open = sem1215_open,
-	.close = sem1215_close,
-};
-
 static const struct v4l2_subdev_ops sem1215_ops = { };
-
-/*
- * The focus range: the module's calibrated infinity and macro positions
- * plus a margin either side, or the whole range if the calibration can't
- * be read or makes no sense. Powers the controller for the read.
- */
-static void sem1215_range(struct sem1215 *lens, s32 *min, s32 *max)
-{
-	u64 inf = 0, macro = 0;
-	int ret;
-
-	*min = 0;
-	*max = SEM1215_POS_MAX;
-
-	ret = sem1215_supplies_on(lens);
-	if (ret)
-		return;
-	ret = sem1215_wait_ready(lens);
-	cci_read(lens->regmap, SEM1215_REG_CAL_INF, &inf, &ret);
-	cci_read(lens->regmap, SEM1215_REG_CAL_MACRO, &macro, &ret);
-	sem1215_supplies_off(lens);
-
-	if (ret || inf >= macro || macro > SEM1215_POS_MAX) {
-		dev_info(lens->dev, "no focus calibration (%d), range 0-%u\n",
-			 ret, SEM1215_POS_MAX);
-		return;
-	}
-
-	*min = max_t(s32, (s32)inf - SEM1215_CAL_MARGIN, 0);
-	*max = min_t(s32, (s32)macro + SEM1215_CAL_MARGIN, SEM1215_POS_MAX);
-	dev_info(lens->dev, "focus range %d-%d (calibrated %llu-%llu)\n",
-		 *min, *max, inf, macro);
-}
 
 static int sem1215_init_controls(struct sem1215 *lens)
 {
 	struct v4l2_ctrl_handler *hdl = &lens->ctrls;
-	s32 min, max;
-
-	sem1215_range(lens, &min, &max);
 
 	v4l2_ctrl_handler_init(hdl, 1);
-	/* start a quarter of the way from infinity */
+	/* the calibration narrows the range at the first power-up */
 	lens->focus = v4l2_ctrl_new_std(hdl, &sem1215_ctrl_ops,
-					V4L2_CID_FOCUS_ABSOLUTE, min, max, 1,
-					min + (max - min) / 4);
+					V4L2_CID_FOCUS_ABSOLUTE, 0,
+					SEM1215_POS_MAX, 1, SEM1215_POS_MAX / 4);
 	if (hdl->error) {
 		int ret = hdl->error;
 
@@ -322,7 +317,6 @@ static int sem1215_probe(struct i2c_client *client)
 
 	v4l2_i2c_subdev_init(&lens->sd, client, &sem1215_ops);
 	lens->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-	lens->sd.internal_ops = &sem1215_internal_ops;
 	lens->sd.entity.function = MEDIA_ENT_F_LENS;
 
 	ret = sem1215_init_controls(lens);
