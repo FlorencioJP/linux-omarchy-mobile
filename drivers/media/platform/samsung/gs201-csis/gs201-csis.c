@@ -1546,7 +1546,7 @@ static void gs201_csis_buf_queue(struct vb2_buffer *vb)
 
 	spin_lock_irqsave(&csis->slock, flags);
 	list_add_tail(&buf->list, &csis->pending);
-	if (!csis->next && vb2_is_streaming(vb->vb2_queue))
+	if (!csis->next && vb2_start_streaming_called(vb->vb2_queue))
 		gs201_csis_next_buffer(csis);
 	spin_unlock_irqrestore(&csis->slock, flags);
 }
@@ -1591,7 +1591,8 @@ static int gs201_csis_start_streaming(struct vb2_queue *vq, unsigned int count)
 	csis->dma_on = !link_only;
 
 	spin_lock_irqsave(&csis->slock, flags);
-	gs201_csis_next_buffer(csis);
+	if (!csis->next)
+		gs201_csis_next_buffer(csis);
 	spin_unlock_irqrestore(&csis->slock, flags);
 
 	if (csis->dma_on) {
