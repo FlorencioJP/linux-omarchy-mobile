@@ -36,6 +36,8 @@
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <linux/slab.h>
+#include <linux/string.h>
 #include <linux/unaligned.h>
 
 #include <media/v4l2-cci.h>
@@ -280,6 +282,56 @@ struct s5kgn1 {
 	s64 link_freqs[S5KGN1_MAX_MODES];
 	unsigned int num_link_freqs;
 };
+
+/*
+ * Bring-up: write only exposure, analogue gain and frame length from the
+ * controls, as a set-up known to capture the main camera does; the
+ * digital gains and a zero test pattern are then left as the tables set
+ * them.
+ */
+static bool basic_ctrls;
+module_param(basic_ctrls, bool, 0644);
+MODULE_PARM_DESC(basic_ctrls, "Write no digital gain and no zero test pattern (bring-up)");
+
+/*
+ * Bring-up: up to eight 16-bit register writes after the mode's tables,
+ * as "addr=value" pairs, e.g. "0x0312=2,0x0342=6000" (the output clock's
+ * post-divider and a doubled line length: half the link rate). Not
+ * reflected in the controls: the frame rate and exposure times change.
+ */
+static char *extra_regs = "";
+module_param(extra_regs, charp, 0644);
+MODULE_PARM_DESC(extra_regs, "Register writes after the mode tables, addr=val[,addr=val] (bring-up)");
+
+static int s5kgn1_extra_regs(struct s5kgn1 *s)
+{
+	char *buf, *p, *tok;
+	unsigned int n = 0;
+	int ret = 0;
+
+	if (!extra_regs || !*extra_regs)
+		return 0;
+	buf = kstrdup(extra_regs, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+	p = buf;
+	while ((tok = strsep(&p, ",")) && n < 8 && !ret) {
+		char *eq = strchr(tok, '=');
+		u16 addr, val;
+
+		if (!eq)
+			continue;
+		*eq = 0;
+		if (kstrtou16(tok, 0, &addr) || kstrtou16(eq + 1, 0, &val) ||
+		    addr == 0x0100 || addr == 0x6010)
+			continue;
+		cci_write(s->regmap, CCI_REG16(addr), val, &ret);
+		dev_info(s->dev, "extra write 0x%04x = 0x%04x: %d\n", addr, val, ret);
+		n++;
+	}
+	kfree(buf);
+	return ret;
+}
 
 static inline struct s5kgn1 *to_s5kgn1(struct v4l2_subdev *sd)
 {
@@ -646,6 +698,8 @@ static int s5kgn1_set_ctrl(struct v4l2_ctrl *ctrl)
 		cci_write(s->regmap, S5KGN1_REG_ANALOG_GAIN, ctrl->val, &ret);
 		break;
 	case V4L2_CID_DIGITAL_GAIN:
+		if (basic_ctrls)
+			break;
 		cci_write(s->regmap, S5KGN1_REG_DIGITAL_GAIN_GR, ctrl->val, &ret);
 		cci_write(s->regmap, S5KGN1_REG_DIGITAL_GAIN_R, ctrl->val, &ret);
 		cci_write(s->regmap, S5KGN1_REG_DIGITAL_GAIN_B, ctrl->val, &ret);
@@ -656,6 +710,8 @@ static int s5kgn1_set_ctrl(struct v4l2_ctrl *ctrl)
 			  s->mode->height + ctrl->val, &ret);
 		break;
 	case V4L2_CID_TEST_PATTERN:
+		if (basic_ctrls && !ctrl->val)
+			break;
 		cci_write(s->regmap, S5KGN1_REG_TEST_PATTERN, ctrl->val, &ret);
 		break;
 	default:
@@ -844,6 +900,8 @@ static int s5kgn1_enable_streams(struct v4l2_subdev *sd,
 		ret = s5kgn1_write_table(s, s->mode->regs, s->mode->num_regs);
 	if (!ret)
 		ret = s5kgn1_post_tables(s);
+	if (!ret)
+		ret = s5kgn1_extra_regs(s);
 	if (!ret)
 		ret = __v4l2_ctrl_handler_setup(&s->ctrls);
 	if (!ret)

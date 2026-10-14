@@ -95,6 +95,9 @@
 #define CSIS_DMA_CMN_CLK_CTRL_VAL	0x1
 #define CSIS_DMA_CMN_CFG_CSIS1		0x48
 #define CSIS_DMA_CMN_CFG_CSIS1_VAL	0x100
+#define CSIS_DMA_CMN_DEBUG_EN		0x100	/* [I] measured by another bring-up */
+#define CSIS_DMA_CMN_DBG_VCNT(ctx)	(0x144 + 0x20 * (ctx))	/* frames */
+#define CSIS_DMA_CMN_DBG_HDCNT(ctx)	(0x154 + 0x20 * (ctx))	/* lines 31:16, data 15:0 */
 #define CSIS_DMA_CMN_QURGENT_EN		0xa0
 #define CSIS_DMA_CMN_QURGENT_EN_VAL	0x3
 

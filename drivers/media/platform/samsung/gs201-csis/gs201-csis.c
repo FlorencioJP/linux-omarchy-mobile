@@ -116,6 +116,9 @@ struct gs201_csis_stats {
 	u32 dropped;
 	u32 missed_fe;
 	u32 link_irqs;
+	u32 wdma_started_at;	/* the link frame end the WDMA started at */
+	u32 wdma_restarts;	/* wdma_recover restarts */
+	u32 wdma_lines;		/* line ends since the channel's last frame start */
 	/* bring-up: how often each error bit was set, per interrupt */
 	u32 int0_bits[32];
 	u32 int1_bits[8];
@@ -147,6 +150,7 @@ struct gs201_csis {
 	unsigned int ebuf;
 	unsigned int wdma_ch;
 	bool dma_on;
+	unsigned int wdma_arm;		/* link frame ends left before the WDMA starts */
 	bool cphy;			/* the link's endpoint is C-PHY */
 	bool lrte_epd;			/* the sensor sends LRTE packet delimiters */
 	struct regmap *sysreg;
@@ -303,6 +307,96 @@ static unsigned int pixel_mode = CSIS_ISPCFG_PIXEL_MODE_QUAD;
 module_param(pixel_mode, uint, 0644);
 MODULE_PARM_DESC(pixel_mode, "Link channel pixel mode, 0-3 (bring-up; default 2, quad)");
 
+/*
+ * Bring-up: start the WDMA channel only at the link's Nth frame end after
+ * the stream starts (0: at once, before the sensor streams, as before), so
+ * its first frame start is a whole frame's. The main camera's S5KGN1 got
+ * a frame start, a few line ends and then LASTADDR in its first frame, and
+ * the channel took almost no frame start after that.
+ */
+static unsigned int wdma_late;
+module_param(wdma_late, uint, 0644);
+MODULE_PARM_DESC(wdma_late, "Enable the WDMA channel at the link's Nth frame end (bring-up; 0: at start)");
+
+/*
+ * Bring-up: after a WDMA error (LASTADDR, LASTDATA, OVERLAP), switch the
+ * channel off at once, fail the buffer it was writing and switch it on
+ * again at the next link frame end, instead of leaving it to run on. A
+ * channel that hit LASTADDR took almost no frame start afterwards, so one
+ * error ended the stream; with this, each frame is a fresh try and the
+ * run tells how many frames land.
+ */
+static bool wdma_recover;
+module_param(wdma_recover, bool, 0644);
+MODULE_PARM_DESC(wdma_recover, "Restart the WDMA channel at the next link frame end after an error (bring-up)");
+
+/*
+ * Bring-up, to match the order and values of a set-up known to capture
+ * this phone's main camera: wdma_after_link programs the DMA block and
+ * the channel after the link is set up and enabled, just before the
+ * sensor streams (default: before the link); data_ctrl_clear clears bit 0
+ * of the context's data control first (its value is logged either way);
+ * qurgent=0 leaves the DMA common QURGENT register as found.
+ */
+static bool wdma_after_link;
+module_param(wdma_after_link, bool, 0644);
+MODULE_PARM_DESC(wdma_after_link, "Program the WDMA after the link starts, before the sensor (bring-up)");
+
+static bool data_ctrl_clear;
+module_param(data_ctrl_clear, bool, 0644);
+MODULE_PARM_DESC(data_ctrl_clear, "Clear bit 0 of the WDMA context's data control at start (bring-up)");
+
+static bool qurgent = true;
+module_param(qurgent, bool, 0644);
+MODULE_PARM_DESC(qurgent, "Write the DMA common QURGENT enable at start (bring-up; default on)");
+
+/*
+ * Bring-up: keep the bits of the common control and the channel
+ * configurations that this driver doesn't name as the link's soft reset
+ * left them (read-modify-write, as the set-up known to capture the main
+ * camera does) instead of writing them as 0. The values after the reset
+ * are logged either way.
+ */
+static bool link_rmw;
+module_param(link_rmw, bool, 0644);
+MODULE_PARM_DESC(link_rmw, "Keep unnamed link control bits as the soft reset left them (bring-up)");
+
+/*
+ * Bring-up: the link's INT0 (error) interrupt mask. The main camera's
+ * second stream raises ERR_WRONG_CONFIG for every VC 1 packet (about 200
+ * interrupts a frame), each one a read and two writes of the link's
+ * interrupt registers between its VC 0 lines; 0 takes no error interrupt.
+ */
+static unsigned int int0_mask = CSIS_INT0_ERRORS;
+module_param(int0_mask, uint, 0644);
+MODULE_PARM_DESC(int0_mask, "Link INT0 (error) interrupt mask (bring-up; default all errors)");
+
+/*
+ * Bring-up: hand buffers that a WDMA error ended (wdma_recover) or that
+ * missed their frame end to userspace as done, not as errors, so what
+ * the WDMA wrote before the error can be looked at.
+ */
+static bool keep_failed;
+module_param(keep_failed, bool, 0644);
+MODULE_PARM_DESC(keep_failed, "Return failed buffers as done, to look at their data (bring-up)");
+
+/*
+ * Bring-up: the value written to the CSIS sysreg's SC_CON0-2 ("PDP mux",
+ * 3 bits each; at 0 the WDMA gets syncs but no pixel data).
+ */
+static unsigned int sc_con = CSIS_SYSREG_SC_CON_PASS;
+module_param(sc_con, uint, 0644);
+MODULE_PARM_DESC(sc_con, "CSIS sysreg SC_CON0-2 value, 1-7 (bring-up; default 1)");
+
+/*
+ * Bring-up: write the DMA common page's per-link configuration word at
+ * 0x48 (named for link 1 in the stock HAL's register table; stock writes
+ * 0x100) at start. 0 leaves it as found, and the value found is logged.
+ */
+static bool cmn_cfg_csis1 = true;
+module_param(cmn_cfg_csis1, bool, 0644);
+MODULE_PARM_DESC(cmn_cfg_csis1, "Write 0x100 to the DMA common register 0x48 at start (bring-up; default on)");
+
 static bool cached_buffers = true;
 module_param(cached_buffers, bool, 0644);
 MODULE_PARM_DESC(cached_buffers, "Allocate capture buffers cached (non-coherent, synced at dequeue)");
@@ -398,11 +492,28 @@ static void gs201_csis_link_start(struct gs201_csis *csis,
 				  const struct gs201_csis_format *f,
 				  unsigned int lanes)
 {
+	u32 cmn_keep = 0, cfg_keep[4] = { };
 	unsigned int ch;
 
 	link_write(csis, CSIS_CMN_CTRL,
 		   link_read(csis, CSIS_CMN_CTRL) | CSIS_CMN_CTRL_SW_RESET);
 	usleep_range(1000, 1500);
+
+	dev_info(csis->dev, "link %u after soft reset: CMN_CTRL 0x%08x ISP_CONFIG 0x%08x 0x%08x 0x%08x 0x%08x DBG 0x%08x\n",
+		 csis->link_id, link_read(csis, CSIS_CMN_CTRL),
+		 link_read(csis, CSIS_ISP_CONFIG_CH(0)), link_read(csis, CSIS_ISP_CONFIG_CH(1)),
+		 link_read(csis, CSIS_ISP_CONFIG_CH(2)), link_read(csis, CSIS_ISP_CONFIG_CH(3)),
+		 link_read(csis, CSIS_DBG_OPTION_SUITE));
+	if (link_rmw) {
+		cmn_keep = link_read(csis, CSIS_CMN_CTRL) &
+			   ~(CSIS_CMN_CTRL_CSI_EN | CSIS_CMN_CTRL_SW_RESET |
+			     CSIS_CMN_CTRL_LANE_NUMBER | CSIS_CMN_CTRL_INTERLEAVE |
+			     CSIS_CMN_CTRL_F13 | CSIS_CMN_CTRL_CPHY);
+		for (ch = 0; ch < 4; ch++)
+			cfg_keep[ch] = link_read(csis, CSIS_ISP_CONFIG_CH(ch)) &
+				       ~(CSIS_ISPCFG_DATAFORMAT | CSIS_ISPCFG_PIXEL_MODE |
+					 CSIS_ISPCFG_VC);
+	}
 
 	link_write(csis, CSIS_DBG_OPTION_SUITE,
 		   link_read(csis, CSIS_DBG_OPTION_SUITE) | CSIS_DBG_OPTION_BIT23);
@@ -419,7 +530,7 @@ static void gs201_csis_link_start(struct gs201_csis *csis,
 		u32 dt = used ? f->data_type : CSIS_ISPCFG_DT_UNUSED;
 		u32 vc = ch == 0 ? ch0_vc : ch == 1 ? ch1_vc : CSIS_ISPCFG_VC_PARKED;
 
-		link_write(csis, CSIS_ISP_CONFIG_CH(ch),
+		link_write(csis, CSIS_ISP_CONFIG_CH(ch), cfg_keep[ch] |
 			   FIELD_PREP(CSIS_ISPCFG_DATAFORMAT, dt) |
 			   FIELD_PREP(CSIS_ISPCFG_PIXEL_MODE, pixel_mode & 3) |
 			   FIELD_PREP(CSIS_ISPCFG_VC, vc));
@@ -439,11 +550,11 @@ static void gs201_csis_link_start(struct gs201_csis *csis,
 	link_write(csis, CSIS_UPD_SDW, CSIS_UPD_SDW_ALL);
 	link_write(csis, CSIS_PHY_CMN_CTRL, CSIS_PHY_CMN_CTRL_ENABLE);
 
-	link_write(csis, CSIS_INT_MSK0, CSIS_INT0_ERRORS);
+	link_write(csis, CSIS_INT_MSK0, int0_mask & CSIS_INT0_ERRORS);
 	link_write(csis, CSIS_INT_MSK1, CSIS_INT1_FRAME_START |
 		   CSIS_INT1_FRAME_END | CSIS_INT1_ERRORS);
 
-	link_write(csis, CSIS_CMN_CTRL, CSIS_CMN_CTRL_CSI_EN |
+	link_write(csis, CSIS_CMN_CTRL, cmn_keep | CSIS_CMN_CTRL_CSI_EN |
 		   FIELD_PREP(CSIS_CMN_CTRL_LANE_NUMBER, lanes - 1) |
 		   FIELD_PREP(CSIS_CMN_CTRL_INTERLEAVE, 3) |
 		   FIELD_PREP(CSIS_CMN_CTRL_F13, 2) |
@@ -497,7 +608,7 @@ static int gs201_csis_route(struct gs201_csis *csis)
 
 	for (i = 0; i < CSIS_SYSREG_SC_CON_NUM; i++) {
 		ret = regmap_write(csis->sysreg, CSIS_SYSREG_SC_CON(i),
-				   CSIS_SYSREG_SC_CON_PASS);
+				   sc_con & 7 ?: CSIS_SYSREG_SC_CON_PASS);
 		if (ret)
 			goto err_restore;
 	}
@@ -544,8 +655,21 @@ static void gs201_csis_wdma_start(struct gs201_csis *csis)
 			       !(val & CSIS_DMA_CMN_CTRL_SW_RESET), 10, 1000))
 		dev_warn(csis->dev, "DMA block: reset didn't complete\n");
 	writel(CSIS_DMA_CMN_CTRL_VAL, csis->dma + CSIS_DMA_CMN_CTRL);
-	writel(CSIS_DMA_CMN_CFG_CSIS1_VAL, csis->dma + CSIS_DMA_CMN_CFG_CSIS1);
-	writel(CSIS_DMA_CMN_QURGENT_EN_VAL, csis->dma + CSIS_DMA_CMN_QURGENT_EN);
+	writel(1, csis->dma + CSIS_DMA_CMN_DEBUG_EN);
+	val = readl(csis->dma + CSIS_DMA_CMN_CFG_CSIS1);
+	if (cmn_cfg_csis1)
+		writel(CSIS_DMA_CMN_CFG_CSIS1_VAL, csis->dma + CSIS_DMA_CMN_CFG_CSIS1);
+	dev_info(csis->dev, "DMA common 0x48 was 0x%08x, now 0x%08x; WDMA %s\n",
+		 val, readl(csis->dma + CSIS_DMA_CMN_CFG_CSIS1),
+		 wdma_late ? "starts at a link frame end" : "starts now");
+	if (qurgent)
+		writel(CSIS_DMA_CMN_QURGENT_EN_VAL, csis->dma + CSIS_DMA_CMN_QURGENT_EN);
+	val = wdma_read(csis, CSIS_WDMA_DATA_CTRL);
+	if (data_ctrl_clear)
+		wdma_write(csis, CSIS_WDMA_DATA_CTRL, val & ~BIT(0));
+	dev_info(csis->dev, "WDMA data control was 0x%08x, now 0x%08x; QURGENT 0x%08x\n",
+		 val, wdma_read(csis, CSIS_WDMA_DATA_CTRL),
+		 readl(csis->dma + CSIS_DMA_CMN_QURGENT_EN));
 
 	wdma_ch_write(csis, CSIS_WDMA_FMT,
 		      FIELD_PREP(CSIS_WDMA_FMT_CODE, csis->fmt->wdma_fmt));
@@ -568,7 +692,10 @@ static void gs201_csis_wdma_start(struct gs201_csis *csis)
 		   GENMASK(11, 4) | CSIS_WDMA_INT_ERRORS |
 		   (wdma_line_irq ? GENMASK(3, 0) : 0));
 
-	wdma_ch_write(csis, CSIS_WDMA_CTRL, wdma_ctrl | CSIS_WDMA_CTRL_EN);
+	if (wdma_late)
+		WRITE_ONCE(csis->wdma_arm, wdma_late);
+	else
+		wdma_ch_write(csis, CSIS_WDMA_CTRL, wdma_ctrl | CSIS_WDMA_CTRL_EN);
 }
 
 static void gs201_csis_wdma_stop(struct gs201_csis *csis)
@@ -636,8 +763,13 @@ static irqreturn_t gs201_csis_link_irq(int irq, void *data)
 		csis->stats.link_fe[bit]++;
 	if (src1 & CSIS_INT1_FRAME_START)
 		csis->stats.frame_start++;
-	if (src1 & CSIS_INT1_FRAME_END)
+	if (src1 & CSIS_INT1_FRAME_END) {
 		csis->stats.frame_end++;
+		if (csis->wdma_arm && !--csis->wdma_arm) {
+			wdma_ch_write(csis, CSIS_WDMA_CTRL, wdma_ctrl | CSIS_WDMA_CTRL_EN);
+			csis->stats.wdma_started_at = csis->stats.frame_end;
+		}
+	}
 	if ((src0 & CSIS_INT0_ERRORS) || (src1 & CSIS_INT1_ERRORS)) {
 		unsigned long b0 = src0 & CSIS_INT0_ERRORS;
 		unsigned long b1 = src1 & CSIS_INT1_ERRORS;
@@ -687,6 +819,9 @@ static irqreturn_t gs201_csis_wdma_irq(int irq, void *data)
 
 	spin_lock(&csis->slock);
 
+	if (src & CSIS_WDMA_INT_FS(csis->wdma_ch))
+		csis->stats.wdma_lines = 0;
+	csis->stats.wdma_lines += !!(src & CSIS_WDMA_INT_LINE_END(csis->wdma_ch));
 	for (ch = 0; ch < 4; ch++) {
 		csis->stats.wdma_fs[ch] += !!(src & CSIS_WDMA_INT_FS(ch));
 		csis->stats.wdma_fe[ch] += !!(src & CSIS_WDMA_INT_FE(ch));
@@ -717,6 +852,9 @@ static irqreturn_t gs201_csis_wdma_irq(int irq, void *data)
 				 link_read(csis, CSIS_DBG_LAST_PKT),
 				 link_read(csis, CSIS_FRM_CNT_CH(0)),
 				 link_read(csis, CSIS_LRTE_CONFIG));
+			dev_warn(csis->dev, "  WDMA debug: frames 0x%08x, lines/data 0x%08x\n",
+				 readl(csis->dma + CSIS_DMA_CMN_DBG_VCNT(csis->ctx_id)),
+				 readl(csis->dma + CSIS_DMA_CMN_DBG_HDCNT(csis->ctx_id)));
 			dev_warn(csis->dev, "  so far: WDMA FS %u/%u/%u/%u FE %u/%u/%u/%u lines %u/%u/%u/%u (ch 0-3); link FS VC0 %u VC1 %u, FE VC0 %u VC1 %u\n",
 				 csis->stats.wdma_fs[0], csis->stats.wdma_fs[1],
 				 csis->stats.wdma_fs[2], csis->stats.wdma_fs[3],
@@ -756,13 +894,27 @@ static irqreturn_t gs201_csis_wdma_irq(int irq, void *data)
 		csis->stats.wdma_done++;
 	}
 
+	if (wdma_recover && (src & CSIS_WDMA_INT_ERRORS) && !csis->wdma_arm) {
+		wdma_ch_write(csis, CSIS_WDMA_CTRL, wdma_ctrl & ~CSIS_WDMA_CTRL_EN);
+		if (!failed && !done && csis->active) {
+			failed = csis->active;
+			csis->active = NULL;
+		}
+		csis->wdma_arm = 1;
+		csis->stats.wdma_restarts++;
+		if (csis->stats.wdma_restarts <= 8)
+			dev_info(csis->dev, "WDMA error 0x%08x at link frame %u, %u line ends into the frame: restart at the next frame end\n",
+				 src, csis->stats.frame_start, csis->stats.wdma_lines);
+	}
+
 	spin_unlock(&csis->slock);
 
 	if (failed) {
 		failed->vb.vb2_buf.timestamp = ktime_get_ns();
 		failed->vb.sequence = csis->sequence++;
 		failed->vb.field = V4L2_FIELD_NONE;
-		vb2_buffer_done(&failed->vb.vb2_buf, VB2_BUF_STATE_ERROR);
+		vb2_buffer_done(&failed->vb.vb2_buf, keep_failed ?
+				VB2_BUF_STATE_DONE : VB2_BUF_STATE_ERROR);
 	}
 
 	if (done) {
@@ -770,7 +922,7 @@ static irqreturn_t gs201_csis_wdma_irq(int irq, void *data)
 		done->vb.sequence = csis->sequence++;
 		done->vb.field = V4L2_FIELD_NONE;
 		vb2_buffer_done(&done->vb.vb2_buf,
-				(src & CSIS_WDMA_INT_ERRORS) ?
+				(src & CSIS_WDMA_INT_ERRORS) && !keep_failed ?
 				VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE);
 	}
 
@@ -888,6 +1040,8 @@ static int gs201_csis_enable_streams(struct v4l2_subdev *sd,
 		goto err_dvfs;
 
 	gs201_csis_link_start(csis, mf, f, lanes);
+	if (csis->dma_on && wdma_after_link)
+		gs201_csis_wdma_start(csis);
 
 	ret = v4l2_subdev_enable_streams(csis->source.sd,
 					 csis->source.pad->index, BIT(0));
@@ -1371,7 +1525,8 @@ static int gs201_csis_start_streaming(struct vb2_queue *vq, unsigned int count)
 			goto err_pipeline;
 
 		gs201_csis_dvfs_vote(csis, csis->int_clk, "INT", int_khz, &csis->int_rate_old);
-		gs201_csis_wdma_start(csis);
+		if (!wdma_after_link)
+			gs201_csis_wdma_start(csis);
 	}
 
 	ret = v4l2_subdev_enable_streams(&csis->sd, CSIS_PAD_SOURCE, BIT(0));
@@ -1419,7 +1574,11 @@ static void gs201_csis_print_bits(struct seq_file *s, struct device *dev,
 static void gs201_csis_stop_streaming(struct vb2_queue *vq)
 {
 	struct gs201_csis *csis = vb2_get_drv_priv(vq);
+	unsigned long flags;
 
+	spin_lock_irqsave(&csis->slock, flags);
+	csis->wdma_arm = 0;
+	spin_unlock_irqrestore(&csis->slock, flags);
 	v4l2_subdev_disable_streams(&csis->sd, CSIS_PAD_SOURCE, BIT(0));
 	if (csis->dma_on) {
 		gs201_csis_wdma_stop(csis);
@@ -1436,6 +1595,13 @@ static void gs201_csis_stop_streaming(struct vb2_queue *vq)
 		 csis->stats.wdma_done, csis->stats.wdma_errors,
 		 csis->stats.last_wdma_err, csis->stats.dropped,
 		 csis->stats.missed_fe);
+	if (csis->dma_on)
+		dev_info(csis->dev, "WDMA debug at stop: frames 0x%08x, lines/data 0x%08x\n",
+			 readl(csis->dma + CSIS_DMA_CMN_DBG_VCNT(csis->ctx_id)),
+			 readl(csis->dma + CSIS_DMA_CMN_DBG_HDCNT(csis->ctx_id)));
+	if (wdma_late || wdma_recover)
+		dev_info(csis->dev, "WDMA started at link frame end %u, %u restarts\n",
+			 csis->stats.wdma_started_at, csis->stats.wdma_restarts);
 	gs201_csis_print_bits(NULL, csis->dev, "INT0 error bits", csis->stats.int0_bits, 32);
 	gs201_csis_print_bits(NULL, csis->dev, "INT1 error bits", csis->stats.int1_bits, 8);
 	gs201_csis_print_bits(NULL, csis->dev, "WDMA error bits", csis->stats.wdma_bits, 32);
