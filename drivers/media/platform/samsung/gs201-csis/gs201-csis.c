@@ -1972,6 +1972,13 @@ static int gs201_csis_register(struct gs201_csis *csis)
 	q->buf_struct_size = sizeof(struct gs201_csis_buffer);
 	q->ops = &gs201_csis_vb2_ops;
 	q->mem_ops = &vb2_dma_contig_memops;
+	/*
+	 * A full camera pool falls back to the page allocator, where a
+	 * high-order request fails with a warning: report -ENOMEM only.
+	 * (Not DMA_ATTR_NO_WARN: the non-coherent allocation the queue uses
+	 * for cached buffers refuses any attribute but single pages.)
+	 */
+	q->gfp_flags = __GFP_NOWARN;
 	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 	q->lock = &csis->vlock;
 	q->dev = csis->dev;
