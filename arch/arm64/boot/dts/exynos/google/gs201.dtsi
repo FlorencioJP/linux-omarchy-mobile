@@ -579,6 +579,128 @@
 			status = "disabled";
 		};
 
+		/* Camera block (CSIS): routing system registers [Google GPL DT] */
+		sysreg_csis: syscon@1a420000 {
+			compatible = "google,gs201-csis-sysreg", "syscon";
+			reg = <0x1a420000 0x10000>;
+		};
+
+		/*
+		 * CSIS links 0 and 1: four D-PHY lanes or three C-PHY trios
+		 * each. Every link feeds CSIS WDMA context 0 with the EBUF
+		 * bypassed, as link 2 does, so they stream one at a time.
+		 */
+		csis0: csis@1a440000 {
+			compatible = "google,gs201-csis";
+			reg = <0x1a440000 0x1000>, <0x1a4d0000 0x1000>,
+			      <0x1a4d7000 0x1000>, <0x1a4c0000 0x100>;
+			reg-names = "link", "dma", "wdma", "ebuf";
+			interrupts = <GIC_SPI 189 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "link", "wdma";
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_CAM>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_INT>;
+			clock-names = "cam", "int";
+			phys = <&csis_dcphy 0>;
+			google,csis-link = <0>;
+			google,wdma-context = <0>;
+			google,csis-sysreg = <&sysreg_csis>;
+			status = "disabled";
+
+			port {
+				csis0_in: endpoint {
+				};
+			};
+		};
+
+		csis1: csis@1a450000 {
+			compatible = "google,gs201-csis";
+			reg = <0x1a450000 0x1000>, <0x1a4d0000 0x1000>,
+			      <0x1a4d7000 0x1000>, <0x1a4c0000 0x100>;
+			reg-names = "link", "dma", "wdma", "ebuf";
+			interrupts = <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "link", "wdma";
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_CAM>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_INT>;
+			clock-names = "cam", "int";
+			phys = <&csis_dcphy 1>;
+			google,csis-link = <1>;
+			google,wdma-context = <0>;
+			google,csis-sysreg = <&sysreg_csis>;
+			status = "disabled";
+
+			port {
+				csis1_in: endpoint {
+				};
+			};
+		};
+
+		/*
+		 * CSIS link 2, two lanes of its own or four with link 3's
+		 * (DC-PHY slaves 2 and 3 as one receiver), feeding CSIS WDMA
+		 * context 0 with the EBUF bypassed.
+		 */
+		csis2: csis@1a460000 {
+			compatible = "google,gs201-csis";
+			reg = <0x1a460000 0x1000>, <0x1a4d0000 0x1000>,
+			      <0x1a4d7000 0x1000>, <0x1a4c0000 0x100>;
+			reg-names = "link", "dma", "wdma", "ebuf";
+			interrupts = <GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "link", "wdma";
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_CAM>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_INT>;
+			clock-names = "cam", "int";
+			phys = <&csis_dcphy 2>;
+			google,csis-link = <2>;
+			google,wdma-context = <0>;
+			google,csis-sysreg = <&sysreg_csis>;
+			status = "disabled";
+
+			port {
+				csis2_in: endpoint {
+				};
+			};
+		};
+
+		/*
+		 * CSIS link 4, two lanes or C-PHY trios of its own (four D-PHY
+		 * lanes with link 5's), feeding CSIS WDMA context 0 with the
+		 * EBUF bypassed, as the other links.
+		 */
+		csis4: csis@1a480000 {
+			compatible = "google,gs201-csis";
+			reg = <0x1a480000 0x1000>, <0x1a4d0000 0x1000>,
+			      <0x1a4d7000 0x1000>, <0x1a4c0000 0x100>;
+			reg-names = "link", "dma", "wdma", "ebuf";
+			interrupts = <GIC_SPI 193 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "link", "wdma";
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_CAM>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_INT>;
+			clock-names = "cam", "int";
+			phys = <&csis_dcphy 4>;
+			google,csis-link = <4>;
+			google,wdma-context = <0>;
+			google,csis-sysreg = <&sysreg_csis>;
+			status = "disabled";
+
+			port {
+				csis4_in: endpoint {
+				};
+			};
+		};
+
+		csis_dcphy: phy@1a4f0000 {
+			compatible = "google,gs201-mipi-dcphy-rx";
+			reg = <0x1a4f0000 0x4000>;
+			#phy-cells = <1>;
+			samsung,pmu-syscon = <&pmu_system_controller 0x3ebc>;
+			google,reset-sysreg = <&sysreg_csis 0x500>;
+			status = "disabled";
+		};
+
 		cmu_top: clock-controller@1e080000 {
 			compatible = "google,gs201-cmu-top";
 			reg = <0x1e080000 0x10000>;
