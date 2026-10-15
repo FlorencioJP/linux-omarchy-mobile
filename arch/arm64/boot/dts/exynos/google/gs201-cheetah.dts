@@ -26,8 +26,13 @@
 	};
 
 	chosen {
-		/* ABL requires bootargs to exist; it appends its own after these. */
-		bootargs = "console=tty0 fbcon=font:TER16x32 quiet splash plymouth.force-scale=1 vt.global_cursor_default=0 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init omamobile.ufs-probe";
+		/*
+		 * ABL requires bootargs to exist; it appends its own after these.
+		 * mem_sleep_default=s2idle: the firmware offers PSCI system
+		 * suspend, so "mem" would otherwise mean "deep", which needs a
+		 * PMU sleep sequence the kernel doesn't have yet.
+		 */
+		bootargs = "console=tty0 fbcon=font:TER16x32 quiet splash plymouth.force-scale=1 vt.global_cursor_default=0 panic=10 clk_ignore_unused pd_ignore_unused rdinit=/init omamobile.ufs-probe mem_sleep_default=s2idle";
 		#address-cells = <2>;
 		#size-cells = <1>;
 		ranges;
