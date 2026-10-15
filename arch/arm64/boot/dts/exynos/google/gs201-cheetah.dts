@@ -123,6 +123,96 @@
 	};
 };
 
+&acpm_ipc {
+	/*
+	 * Main PMIC, for its RTC (the wake-up timer for suspend tests). The
+	 * driver only reads and writes the RTC and the interrupt masks; the
+	 * rails stay as the bootloader set them. Disabled until proven on
+	 * the phone (SUSPEND-PLAN.md).
+	 */
+	pmic-1 {
+		compatible = "samsung,s2mpg12-pmic";
+		interrupts = <GIC_SPI 72 IRQ_TYPE_LEVEL_HIGH>;
+		google,vgpio2ap-sysreg = <&sysreg_vgpio2ap>;
+		wakeup-source;
+		status = "disabled";
+	};
+
+	/*
+	 * Sub PMIC, for its LDOs (GNSS first). Only the LDO control
+	 * registers are writable through it, and only rails described
+	 * below can be switched; the rest have no constraints and are left
+	 * as the bootloader set them. No interrupt yet (gpa0-1 on stock).
+	 * Disabled until proven on the phone (GNSS-PLAN.md, G1).
+	 */
+	pmic-2 {
+		compatible = "samsung,s2mpg13-pmic";
+		status = "disabled";
+
+		/*
+		 * GPIO0 wakes the camera PMIC (SLG51002 chip select), GPIO1
+		 * enables PP3200_BB_CAM and GPIO3 PP1300_CAM; the others are
+		 * unused on cheetah. Nothing here switches a pin: only the
+		 * camera nodes below, disabled until camera-pwr-test, do.
+		 */
+		pmic_2_gpio: gpio {
+			compatible = "samsung,s2mpg13-gpio";
+			gpio-controller;
+			#gpio-cells = <2>;
+		};
+
+		regulators {
+			/*
+			 * GNSS: L9S_GNSS_CORE, L10S_GNSS_RF, L11S_GNSS_AUX.
+			 * The ranges are stock's, so nothing sets a voltage
+			 * at probe; they are switched by the GNSS driver.
+			 */
+			ldo9s: ldo9s {
+				regulator-name = "vdd_gnss_core";
+				regulator-min-microvolt = <725000>;
+				regulator-max-microvolt = <1300000>;
+			};
+
+			ldo10s: ldo10s {
+				regulator-name = "vdd_gnss_rf";
+				regulator-min-microvolt = <1600000>;
+				regulator-max-microvolt = <1950000>;
+			};
+
+			ldo11s: ldo11s {
+				regulator-name = "vdd_gnss_aux";
+				regulator-min-microvolt = <1600000>;
+				regulator-max-microvolt = <1950000>;
+			};
+
+			/*
+			 * Fingerprint: L15S_UDFPS_AVDD, the sensor's analog
+			 * supply, with stock's range. Off at hand-off (stock
+			 * keeps it on only through regulator-always-on);
+			 * switched by the goodix-fp driver.
+			 */
+			ldo15s: ldo15s {
+				regulator-name = "vdd_udfps";
+				regulator-min-microvolt = <2500000>;
+				regulator-max-microvolt = <3300000>;
+			};
+
+			/*
+			 * L12S_CAMIO: the 1.8 V I/O supply of every camera
+			 * sensor, EEPROM, actuator and the laser AF. Stock
+			 * voltage. Disabled (so not described, and never
+			 * switched) until camera-pwr-test.
+			 */
+			ldo12s: ldo12s {
+				regulator-name = "vddio_cam";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				status = "disabled";
+			};
+		};
+	};
+};
+
 &dsi0 {
 	/*
 	 * The bootloader leaves DECON0 -> DSIM0 -> panel running in command
