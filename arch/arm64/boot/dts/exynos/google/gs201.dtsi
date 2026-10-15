@@ -802,6 +802,29 @@
 		};
 
 		/*
+		 * Multi-core timer. Gives the kernel a broadcast clock event
+		 * device that keeps running while cores are powered down in C2.
+		 */
+		mct: timer@10050000 {
+			compatible = "google,gs201-mct", "samsung,exynos4210-mct";
+			reg = <0x10050000 0x800>;
+			clocks = <&oscclk>, <&cmu_misc CLK_GOUT_MISC_MCT_PCLK>;
+			clock-names = "fin_pll", "mct";
+			interrupts = <GIC_SPI 785 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 786 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 787 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 788 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 789 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 790 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 791 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 792 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 793 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 794 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 795 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 796 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		/*
 		 * ABL leaves both watchdogs running (about 60 s). The driver stops
 		 * them at probe unless tmr_atboot is set.
 		 */
