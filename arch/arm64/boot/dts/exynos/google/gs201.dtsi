@@ -984,6 +984,32 @@
 		 * off yet. Their on/off sequence needs EL3 calls that the generic
 		 * Exynos power domain driver does not make.
 		 */
+		/*
+		 * DECON0 and the DPP0 read DMA it scans out through. No
+		 * power-domains, as for dsi0: nothing may power the DPU down
+		 * while DECON runs.
+		 */
+		decon0: display-controller@1c240000 {
+			compatible = "google,gs201-decon";
+			reg = <0x1c240000 0x6000>, <0x1c0b0000 0x1000>;
+			reg-names = "main", "dma";
+			interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 240 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "frame_start", "frame_done", "extra";
+			/* floors for the 120 Hz mode */
+			clocks = <&acpm_ipc GS201_CLK_ACPM_DVFS_MIF>,
+				 <&acpm_ipc GS201_CLK_ACPM_DVFS_DISP>;
+			clock-names = "mif", "disp";
+			status = "disabled";
+
+			port {
+				decon0_out: endpoint {
+					remote-endpoint = <&dsi0_in>;
+				};
+			};
+		};
+
 		dsi0: dsi@1c2c0000 {
 			compatible = "google,gs201-dsim";
 			reg = <0x1c2c0000 0x300>,
@@ -994,6 +1020,12 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
+
+			port {
+				dsi0_in: endpoint {
+					remote-endpoint = <&decon0_out>;
+				};
+			};
 		};
 
 		gpu: gpu@28000000 {
