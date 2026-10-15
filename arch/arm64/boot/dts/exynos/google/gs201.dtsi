@@ -609,6 +609,12 @@
 			#mbox-cells = <0>;
 		};
 
+		/* Latches the S2MPG12 PMIC's in-band interrupt (GIC SPI 72). */
+		sysreg_vgpio2ap: syscon@182f0000 {
+			compatible = "google,gs201-vgpio2ap-sysreg", "syscon";
+			reg = <0x182f0000 0x1000>;
+		};
+
 		apm_sram: sram@18500000 {
 			compatible = "mmio-sram";
 			reg = <0x18500000 0x48000>;
