@@ -151,6 +151,21 @@
 			reg = <0x0 0xfac00000 (1440 * 3120 * 4)>;
 			no-map;
 		};
+
+		/*
+		 * Scanout buffers for gs-decon: DPP0 takes 32-bit addresses and
+		 * the DPU SysMMU is bypassed. Room for five 1440x3120 XRGB8888
+		 * buffers. Reusable, so the pages serve movable allocations
+		 * while unused.
+		 */
+		display_pool: display-pool {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x5c00000>;
+			/* read with the root's #address-cells (2), not #size-cells */
+			alignment = <0x0 0x200000>;
+			alloc-ranges = <0x0 0x80000000 0x80000000>;
+		};
 	};
 };
 
@@ -261,6 +276,17 @@
 		width-mm = <71>;
 		height-mm = <155>;
 	};
+};
+
+/*
+ * Flip-only KMS on the bootloader's pipeline (DISPLAY-PLAN.md, D4a/D5d):
+ * gs-decon takes the screen over from simpledrm once it and the DSIM and
+ * panel drivers have probed.
+ */
+&decon0 {
+	memory-region = <&display_pool>, <&cont_splash_mem>;
+	memory-region-names = "pool", "boot-framebuffer";
+	status = "okay";
 };
 
 /* Display bring-up, gate D1b: the DPU and DISP clock controllers. */
