@@ -18,6 +18,7 @@
 	aliases {
 		pinctrl0 = &pinctrl_gpio_alive;
 		pinctrl1 = &pinctrl_far_alive;
+		pinctrl4 = &pinctrl_peric0;
 		pinctrl5 = &pinctrl_peric1;
 	};
 
@@ -288,6 +289,26 @@
 				 <&cmu_top CLK_DOUT_CMU_PERIC0_NOC>,
 				 <&cmu_top CLK_DOUT_CMU_PERIC0_IP>;
 			clock-names = "oscclk", "bus", "ip";
+		};
+
+		sysreg_peric0: syscon@10820000 {
+			compatible = "google,gs201-peric0-sysreg", "syscon";
+			reg = <0x10820000 0x10000>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_SYSREG_PERIC0_PCLK>;
+		};
+
+		/*
+		 * Off by default: only Bluetooth (BT_REG_ON, BT_DEV_WAKE on gpp16)
+		 * and the haptics I2C bus (gpp16-0/1) use it so far, and both are
+		 * still at bring-up.
+		 */
+		pinctrl_peric0: pinctrl@10840000 {
+			compatible = "google,gs201-pinctrl";
+			reg = <0x10840000 0x1000>;
+			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_GPIO_PERIC0_PCLK>;
+			clock-names = "pclk";
+			interrupts = <GIC_SPI 664 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
 		};
 
 		cmu_peric1: clock-controller@10c00000 {
