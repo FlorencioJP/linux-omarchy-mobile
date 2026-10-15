@@ -17,3 +17,28 @@ config DRM_GS_DSIM_CMD
 
 	  To compile this driver as a module, choose M here: the module
 	  will be called gs-dsim-cmd.
+
+config DRM_GS_DECON
+	tristate "Google gs201 DECON flip-only KMS driver"
+	depends on ARCH_EXYNOS || COMPILE_TEST
+	depends on OF && DRM && MMU
+	depends on DRM_GS_DSIM_CMD
+	select DRM_CLIENT_SELECTION
+	select DRM_GEM_DMA_HELPER
+	select DRM_KMS_HELPER
+	select APERTURE_HELPERS
+	help
+	  KMS driver for the gs201 (Tensor G2) DECON0 on a display the
+	  bootloader left running in DSI command mode. It keeps the
+	  bootloader's DECON, DSIM and DSC configuration and only flips
+	  DPP0 between scanout buffers, with vblank and page flip events
+	  from the DECON frame start interrupt, and switches the panel
+	  between 60 and 120 Hz through the DSIM driver. It replaces
+	  simpledrm.
+
+	  This is a bring-up driver. For debugging, the stage module
+	  parameter limits it to logging the hardware state (0) or to
+	  counting frame interrupts (1).
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called gs-decon.
