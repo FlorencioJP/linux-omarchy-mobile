@@ -934,7 +934,7 @@
 		 * them at probe unless tmr_atboot is set.
 		 */
 		watchdog_cl0: watchdog@10060000 {
-			compatible = "google,gs201-wdt";
+			compatible = "google,gs201-wdt", "google,gs101-wdt";
 			reg = <0x10060000 0x100>;
 			clocks = <&cmu_misc CLK_GOUT_MISC_WDT_CLUSTER0_PCLK>,
 				 <&oscclk>;
@@ -945,7 +945,7 @@
 		};
 
 		watchdog_cl1: watchdog@10070000 {
-			compatible = "google,gs201-wdt";
+			compatible = "google,gs201-wdt", "google,gs101-wdt";
 			reg = <0x10070000 0x100>;
 			clocks = <&cmu_misc CLK_GOUT_MISC_WDT_CLUSTER1_PCLK>,
 				 <&oscclk>;
@@ -974,7 +974,7 @@
 		};
 
 		pmu_system_controller: system-controller@18060000 {
-			compatible = "google,gs201-pmu", "syscon";
+			compatible = "google,gs201-pmu", "google,gs101-pmu";
 			reg = <0x18060000 0x10000>;
 			google,pmu-intr-gen-syscon = <&pmu_intr_gen>;
 
@@ -995,7 +995,8 @@
 		};
 
 		pmu_intr_gen: syscon@18070000 {
-			compatible = "google,gs201-pmu-intr-gen", "syscon";
+			compatible = "google,gs201-pmu-intr-gen", "google,gs101-pmu-intr-gen",
+				     "syscon";
 			reg = <0x18070000 0x10000>;
 		};
 
