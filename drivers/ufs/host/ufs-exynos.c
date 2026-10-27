@@ -2558,6 +2558,7 @@ static const struct exynos_ufs_drv_data zumapro_ufs_drvs = {
 				  EXYNOS_UFS_OPT_UNGATE_POST_CHANGE,
 	.iocc_mask		= UFS_GS101_SHARABLE,
 	.drv_init		= zumapro_ufs_drv_init,
+	.suspend		= gs101_ufs_suspend,
 	.pre_link		= zumapro_ufs_pre_link,
 	.post_link		= zumapro_ufs_post_link,
 	.pre_pwr_change		= zumapro_ufs_pre_pwr_change,
